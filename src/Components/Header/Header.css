@@ -1,0 +1,79 @@
+/* para la cabecera del sitio web, que se mantiene fija en la parte superior de la página y cambia su apariencia al hacer scroll. */
+.header {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 50;
+  transition: background .3s ease, box-shadow .3s ease;
+}
+
+.header .wrap {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 4.75rem;                 
+}
+
+.logo img {
+  height: 2.125rem;              
+  width: auto;
+  display: block;
+}
+
+.logo .logo-dark {
+  display: none;
+}
+
+.nav {
+  display: flex;
+  align-items: center;
+  gap: 1.75rem;                    
+  font-weight: 600;
+  font-size: 0.9375rem;            
+}
+
+.nav a {
+  color: #fff;
+  text-decoration: none;
+  opacity: .92;
+  transition: color .3s ease, background .3s ease, opacity .2s ease;
+}
+
+.nav a:not(.pill):hover {
+  opacity: 1;
+  text-decoration: underline;
+  text-underline-offset: 0.4em;    
+}
+
+.nav .pill {
+  background: #fff;
+  color: var(--navy);
+  padding: 0.65em 1.35em;          
+  border-radius: 999px;
+  opacity: 1;
+}
+
+/* Cuando scrolleamos */
+.header.scrolled {
+  background: rgba(255, 255, 255, .92);
+  backdrop-filter: blur(12px);
+  box-shadow: 0 1px 0 var(--line);
+}
+
+.header.scrolled .logo-light {
+  display: none;
+}
+
+.header.scrolled .logo-dark {
+  display: block;
+}
+
+.header.scrolled .nav a {
+  color: var(--navy);
+}
+
+.header.scrolled .nav .pill {
+  background: var(--navy);
+  color: #fff;
+}

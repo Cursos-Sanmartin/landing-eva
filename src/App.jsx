@@ -1,9 +1,14 @@
-
+import Header from './Components/Header/Header'
 
 function App() {
 
   return (
-      <h1>eva</h1>
+    <>
+        <Header />
+      <main style={{ height: '200vh', background: 'var(--sky)' }}>
+        <h1 className="wrap" style={{ paddingTop: '7.5rem' }}>eva</h1>
+      </main>
+    </>
   )
 }
 
