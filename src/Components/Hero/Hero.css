@@ -1,0 +1,129 @@
+/* Contenedor del hero */
+.hero {
+  position: relative;
+  overflow: hidden;
+  color: #fff;
+  background: linear-gradient(165deg, #0ea2e6 0%, var(--sky) 45%, var(--sky-light) 100%);
+  padding: 9.375rem 0 10.625rem;         
+}
+
+.hero-grid {
+  position: relative;
+  z-index: 2;
+  display: grid;
+  grid-template-columns: 1.05fr .95fr;
+  gap: 2.5rem;                            
+  align-items: center;
+}
+
+/* volanta */
+.eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: .625rem;                            
+  font-size: .875rem;                     
+  font-weight: 600;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  background: rgba(255, 255, 255, .18);
+  border: 1px solid rgba(255, 255, 255, .35);
+  padding: .5em 1.15em;
+  border-radius: 999px;
+  backdrop-filter: blur(6px);
+}
+
+/* Solcito */
+.eyebrow i {
+  width: .5rem;                           
+  height: .5rem;
+  border-radius: 50%;
+  background: var(--sun);
+  box-shadow: 0 0 0 .25rem rgba(255, 228, 153, .35);
+}
+
+/* Título */
+.hero h1 {
+  font-size: clamp(2.75rem, 7vw, 5.75rem); 
+  line-height: .98;
+  font-weight: 700;
+  letter-spacing: -.035em;
+  margin: 1.625rem 0 1.375rem;             
+}
+
+.hero h1 em {
+  font-style: normal;
+  color: var(--navy);
+}
+
+/* Texto */
+.hero .lead {
+  font-size: clamp(1.0625rem, 1.6vw, 1.25rem); 
+  font-weight: 500;
+  max-width: 32.5rem;                     
+  line-height: 1.6;
+  opacity: .96;
+}
+
+/* Botones */
+.cta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .875rem;                            
+  margin-top: 2.125rem;                   
+}
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: .625em;
+  font-family: inherit;
+  font-size: 1rem;
+  font-weight: 700;
+  line-height: 1;
+  padding: 1.0625em 1.75em;                
+  border-radius: 999px;
+  text-decoration: none;
+  cursor: pointer;
+  transition: transform .2s ease, box-shadow .2s ease, background .2s ease;
+}
+
+.btn:hover {
+  transform: translateY(-2px);
+}
+
+.btn-primary {
+  background: var(--navy);
+  color: #fff;
+  box-shadow: 0 12px 30px -10px rgba(10, 46, 94, .7);
+}
+
+.btn-ghost {
+  background: rgba(255, 255, 255, .16);
+  color: #fff;
+  border: 1.5px solid rgba(255, 255, 255, .6);
+}
+
+.btn-ghost:hover {
+  background: rgba(255, 255, 255, .26);
+}
+
+/* Contadores */
+.stats {
+  display: flex;
+  gap: 2.25rem;                           
+  margin-top: 2.875rem;                   
+}
+
+.stats b {
+  display: block;
+  font-size: 2.5rem;                       
+  font-weight: 800;
+  line-height: 1;
+  letter-spacing: -.02em;
+}
+
+.stats span {
+  font-size: .875rem;                      
+  font-weight: 600;
+  opacity: .9;
+}

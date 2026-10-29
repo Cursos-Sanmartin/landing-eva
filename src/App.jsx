@@ -1,12 +1,13 @@
 import Header from './Components/Header/Header'
+import Hero from './Components/Hero/Hero'
 
 function App() {
-
   return (
     <>
-        <Header />
-      <main style={{ height: '200vh', background: 'var(--sky)' }}>
-        <h1 className="wrap" style={{ paddingTop: '7.5rem' }}>eva</h1>
+      <Header />
+      <main>
+        <Hero />
+        <div style={{ height: '100vh' }} />
       </main>
     </>
   )
