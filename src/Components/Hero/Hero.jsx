@@ -1,9 +1,15 @@
-import './Hero.css'
+import "./Hero.css";
 
 function Hero() {
   return (
     <section className="hero">
       <div className="wrap hero-grid">
+        <img
+          className="badge-ca"
+          src="/comunidad-activa-blanco.png"
+          alt="Comunidad Activa"
+        />
+
         <div className="hero-text">
           <span className="eyebrow">
             <i aria-hidden="true"></i>
@@ -61,8 +67,16 @@ function Hero() {
           {/* Día 2: ventanitas de navegador */}
         </div>
       </div>
+       <svg
+        className="hero-wave"
+        viewBox="0 0 1440 110"
+        preserveAspectRatio="none"
+        aria-hidden="true"
+      >
+        <path d="M0 110V60C240 10 480 0 720 30s480 70 720 10v70z" fill="#fff" />
+      </svg>
     </section>
-  )
+  );
 }
 
-export default Hero
+export default Hero;
