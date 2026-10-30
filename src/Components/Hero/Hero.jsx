@@ -1,4 +1,11 @@
+import BrowserMock from "../BrowserMock/BrowserMock";
 import "./Hero.css";
+
+const MOCKS = [
+  { name: "Pixel Quest", url: "ejemplo.com", color: "#22b573" },
+  { name: "Feria Verde", url: "ejemplo.com", color: "#e5487f" },
+  { name: "Datos del Río", url: "ejemplo.com", color: "#00a9e9", art: "data" },
+];
 
 function Hero() {
   return (
@@ -64,10 +71,12 @@ function Hero() {
         </div>
 
         <div className="hero-art" aria-hidden="true">
-          {/* Día 2: ventanitas de navegador */}
+          {MOCKS.map((mock) => (
+            <BrowserMock key={mock.name} {...mock} />
+          ))}
         </div>
       </div>
-       <svg
+      <svg
         className="hero-wave"
         viewBox="0 0 1440 110"
         preserveAspectRatio="none"
