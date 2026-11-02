@@ -1,0 +1,123 @@
+/* Tarjeta */
+.project-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  transition: transform .35s cubic-bezier(.2, .7, .2, 1), box-shadow .35s;
+}
+
+.project-card:hover {
+  transform: translateY(-.375rem);
+  box-shadow: var(--shadow);
+}
+
+/* La ventanita, más chata que en el hero */
+.project-card .browser {
+  margin: .75rem .75rem 0;
+  border: 1px solid var(--line);
+  box-shadow: none;
+}
+
+/* Etiqueta "Ejemplo" */
+.tag-example {
+  position: absolute;
+  top: 1.375rem;
+  right: 1.375rem;
+  z-index: 2;
+  padding: .3125rem .625rem;
+  border-radius: 999px;
+  background: var(--sun);
+  color: var(--navy);
+  font-size: .6875rem;
+  font-weight: 800;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+
+/*  Textos */
+.project-body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  padding: 1.375rem 1.5rem 1.5rem;
+}
+
+.project-theme {
+  font-size: .75rem;
+  font-weight: 700;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  color: color-mix(in srgb, var(--tc) 78%, var(--navy));
+}
+
+.project-card h3 {
+  margin: .375rem 0 .25rem;
+  font-size: 1.4375rem;
+  font-weight: 700;
+  line-height: 1.2;
+  letter-spacing: -.015em;
+  color: var(--navy);
+}
+
+.project-students {
+  font-size: .9375rem;
+  font-weight: 600;
+}
+
+.project-school {
+  font-size: .875rem;
+  font-weight: 500;
+  color: var(--muted);
+}
+
+.project-desc {
+  margin: .75rem 0 1.25rem;
+  font-size: .9375rem;
+  font-weight: 500;
+  color: var(--muted);
+}
+
+/* Link */
+.project-link {
+  margin-top: auto;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding-top: 1rem;
+  border-top: 1px solid var(--line);
+  font-weight: 700;
+  color: var(--navy);
+  text-decoration: none;
+}
+
+/* Estira el link sobre toda la tarjeta: se puede clickear en cualquier lado */
+.project-link::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+}
+
+.project-link svg {
+  width: 2.375rem;
+  height: 2.375rem;
+  padding: .625rem;
+  border-radius: 50%;
+  background: var(--bg-soft);
+  transition: background .25s, color .25s, transform .25s;
+}
+
+.project-card:hover .project-link svg {
+  background: var(--cyan);
+  color: #fff;
+  transform: rotate(-45deg);
+}
+
+/* Sobre fondo blanco el amarillo no se ve: con teclado marcamos en celeste */
+.project-link:focus-visible {
+  outline-color: var(--cyan);
+}

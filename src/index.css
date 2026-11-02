@@ -49,3 +49,25 @@ body{
   outline-offset: 4px;
   border-radius: 6px;
 }
+
+/* Secciones  */
+section {
+  padding: 6.875rem 0;
+}
+
+.kicker {
+  font-size: .875rem;
+  font-weight: 700;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+  color: var(--cyan);
+}
+
+h2 {
+  margin: .75rem 0 1.25rem;
+  font-size: clamp(2.125rem, 4.6vw, 3.625rem);
+  font-weight: 700;
+  line-height: 1.04;
+  letter-spacing: -.03em;
+  color: var(--navy);
+}

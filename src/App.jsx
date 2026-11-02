@@ -1,5 +1,6 @@
 import Header from './Components/Header/Header'
 import Hero from './Components/Hero/Hero'
+import Projects from './Components/Projects/Projects.jsx'
 
 function App() {
   return (
@@ -7,7 +8,7 @@ function App() {
       <Header />
       <main>
         <Hero />
-        <div style={{ height: '100vh' }} />
+        <Projects />
       </main>
     </>
   )
