@@ -71,3 +71,10 @@ h2 {
   letter-spacing: -.03em;
   color: var(--navy);
 }
+
+.section-lead {
+  max-width: 40rem;
+  font-size: 1.125rem;
+  font-weight: 500;
+  color: var(--muted);
+}

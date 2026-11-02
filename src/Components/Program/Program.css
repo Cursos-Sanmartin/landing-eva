@@ -1,0 +1,233 @@
+/*  Sección */
+.program {
+  background: var(--bg-soft);
+  border-radius: 3rem 3rem 0 0;
+}
+
+.program-head {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: end;
+  gap: 1.875rem;
+}
+
+/* Dos columnas: la card a la izquierda, las unidades a la derecha */
+.scrolly {
+  display: grid;
+  grid-template-columns: 1.05fr .95fr;
+  gap: 4.375rem;
+  margin-top: 5.625rem;
+}
+
+/*  La card que se construye  */
+.builder-wrap {
+  position: relative;
+}
+
+.builder {
+  position: sticky;
+  top: 6.875rem;
+  padding: 1.625rem;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 1.875rem;
+  box-shadow: 0 40px 80px -45px rgba(10, 46, 94, .55);
+}
+
+.builder-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1.125rem;
+}
+
+.builder-top small {
+  display: block;
+  font-size: .75rem;
+  font-weight: 700;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  color: var(--cyan);
+}
+
+.builder-top b {
+  font-size: 1.375rem;
+  letter-spacing: -.01em;
+  color: var(--navy);
+}
+
+/* Anillo de progreso */
+.ring {
+  position: relative;
+  width: 4rem;
+  height: 4rem;
+}
+
+.ring svg {
+  width: 100%;
+  height: 100%;
+  rotate: -90deg;
+}
+
+.ring circle {
+  fill: none;
+  stroke: var(--line);
+  stroke-width: 5;
+}
+
+.ring .ring-fg {
+  stroke: var(--cyan);
+  stroke-linecap: round;
+  transition: stroke-dashoffset .8s cubic-bezier(.3, .7, .2, 1);
+}
+
+.ring span {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  font-size: .9375rem;
+  font-weight: 800;
+  color: var(--navy);
+}
+
+/* Ventana donde se arma el trabajo */
+.builder-window {
+  border: 1px solid var(--line);
+  box-shadow: none;
+}
+
+.builder-canvas {
+  position: relative;
+  aspect-ratio: 16 / 10.5;
+  overflow: hidden;
+  background: #fff;
+}
+
+.builder-empty {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  font-size: .9375rem;
+  font-weight: 700;
+  color: #9db3c8;
+}
+
+/* Chips de unidades */
+.builder-chips {
+  display: flex;
+  gap: .375rem;
+  margin-top: 1.125rem;
+}
+
+.chip-unit {
+  flex: 1;
+  display: inline-flex;
+  justify-content: center;
+  align-items: center;
+  gap: .25rem;
+  padding: .375rem .25rem;
+  border-radius: 999px;
+  background: var(--bg-soft);
+  color: #9db3c8;
+  font-size: .75rem;
+  font-weight: 700;
+  white-space: nowrap;
+  transition: background .4s, color .4s, transform .4s;
+}
+
+.chip-unit svg {
+  width: .875rem;
+  height: .875rem;
+  opacity: 0;
+  transition: opacity .4s;
+}
+
+.chip-unit.on {
+  background: color-mix(in srgb, var(--cyan) 14%, #fff);
+  color: var(--navy);
+  transform: scale(1.04);
+}
+
+.chip-unit.on svg {
+  opacity: 1;
+  color: var(--cyan);
+}
+
+/* Las unidades */
+.steps {
+  list-style: none;
+  padding: 8vh 0 18vh;
+}
+
+.step {
+  position: relative;
+  min-height: 62vh;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding-left: 1.875rem;
+  border-left: 3px solid var(--line);
+  opacity: .32;
+  transition: opacity .5s, border-color .5s;
+}
+
+.step.active {
+  opacity: 1;
+  border-color: var(--cyan);
+}
+
+.step.final.active {
+  border-color: #f2b705;
+}
+
+/* Número con contorno: letra transparente y borde celeste */
+.step-num {
+  margin-bottom: .875rem;
+  font-size: 4rem;
+  font-weight: 800;
+  line-height: 1;
+  letter-spacing: -.04em;
+  color: transparent;
+  -webkit-text-stroke: 2px var(--cyan);
+}
+
+.step.final .step-num {
+  color: #f2b705;
+  -webkit-text-stroke: 0;
+}
+
+.step.final .step-num svg {
+  width: 3.5rem;
+  height: 3.5rem;
+}
+
+.step small {
+  font-size: .8125rem;
+  font-weight: 700;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  color: var(--cyan);
+}
+
+.step.final small {
+  color: #c08a00;
+}
+
+.step h3 {
+  margin: .375rem 0 .625rem;
+  font-size: clamp(1.75rem, 3.2vw, 2.5rem);
+  font-weight: 700;
+  line-height: 1.1;
+  letter-spacing: -.025em;
+  color: var(--navy);
+}
+
+.step p {
+  max-width: 27.5rem;
+  font-size: 1.125rem;
+  font-weight: 500;
+  color: var(--muted);
+}
