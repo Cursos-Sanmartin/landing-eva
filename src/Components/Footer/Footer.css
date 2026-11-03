@@ -33,3 +33,13 @@
   border: 0;
   border-top: 1px solid rgba(255, 255, 255, .12);
 }
+
+
+/* ---------- Celular: todo alineado a la izquierda, uno abajo del otro ---------- */
+@media (max-width: 40rem) {
+  .footer-row {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 1.25rem;
+  }
+}

@@ -84,3 +84,25 @@
   color: var(--navy);
   box-shadow: none;
 }
+
+/* ---------- Tablet: el título arriba y las 4 piezas en 2 columnas ---------- */
+@media (max-width: 64rem) {
+  .kit {
+    grid-template-columns: 1fr;
+  }
+
+  .kit-items {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+/* ---------- Celular: una pieza debajo de la otra ---------- */
+@media (max-width: 40rem) {
+  .kit {
+    padding: 1.125rem;
+  }
+
+  .kit-items {
+    grid-template-columns: 1fr;
+  }
+}

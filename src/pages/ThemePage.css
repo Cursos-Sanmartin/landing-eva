@@ -123,3 +123,18 @@
     animation: none;
   }
 }
+
+/* ---------- Tablet y celular: sin el círculo del ícono ---------- */
+@media (max-width: 64rem) {
+  .theme-hero {
+    padding: 8rem 0 7rem;
+  }
+
+  .theme-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .theme-badge {
+    display: none;
+  }
+}

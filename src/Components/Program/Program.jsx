@@ -37,6 +37,9 @@ function Program() {
   useEffect(() => {
     const items = stepsRef.current.querySelectorAll(".step");
 
+    // En pantallas chicas la card tapa la parte de arriba,
+    // así que la franja que "activa" cada unidad va más abajo
+    const small = window.matchMedia("(max-width: 64rem)").matches;
     const observer = new IntersectionObserver(
       (entries) => {
         entries.forEach((entry) => {
@@ -45,7 +48,7 @@ function Program() {
           }
         });
       },
-      { rootMargin: "-45% 0px -45% 0px" },
+      { rootMargin: small ? "-72% 0px -24% 0px" : "-45% 0px -45% 0px" },
     );
 
     items.forEach((item) => observer.observe(item));
@@ -104,12 +107,16 @@ function Program() {
                   <i></i>
                   <span>mi-trabajo-final.com</span>
                 </div>
-                                <div className={`builder-canvas ${step >= UNITS.length ? "done" : ""}`}>
+                <div
+                  className={`builder-canvas ${step >= UNITS.length ? "done" : ""}`}
+                >
                   <div className={`builder-empty ${step > 0 ? "hidden" : ""}`}>
                     Empezá por la Unidad 1
                   </div>
-                                    {/* Capa 1: el boceto (se va cuando el trabajo está terminado) */}
-                  <div className={`layer ${step >= 1 && step < UNITS.length ? "show" : ""}`}>
+                  {/* Capa 1: el boceto (se va cuando el trabajo está terminado) */}
+                  <div
+                    className={`layer ${step >= 1 && step < UNITS.length ? "show" : ""}`}
+                  >
                     <i className="sketch sketch-nav"></i>
                     <i className="sketch sketch-hero"></i>
                     <i className="sketch sketch-card card-1"></i>
@@ -126,7 +133,7 @@ function Program() {
                       <u></u>
                     </i>
                   </div>
-                  
+
                   {/* Capa 3: título e imagen principal */}
                   <div className={`layer ${step >= 3 ? "show" : ""}`}>
                     <i className="hero-title"></i>

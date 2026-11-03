@@ -136,3 +136,21 @@
   font-weight: 500;
   color: var(--muted);
 }
+
+/* ---------- Tablet y celular: una columna ---------- */
+@media (max-width: 64rem) {
+  .join-grid {
+    grid-template-columns: 1fr;
+    gap: 2.5rem;
+  }
+}
+
+@media (max-width: 40rem) {
+  .join-card {
+    padding: 1.75rem;
+  }
+
+  .join-step {
+    padding: 1rem;
+  }
+}

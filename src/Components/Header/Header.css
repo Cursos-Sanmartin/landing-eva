@@ -77,3 +77,24 @@
   background: var(--navy);
   color: #fff;
 }
+
+
+
+/* ---------- Celular: solo el logo y el botón ---------- */
+@media (max-width: 40rem) {
+  .header .wrap {
+    height: 4rem;
+  }
+
+  .logo img {
+    height: 1.75rem;
+  }
+
+  .nav a:not(.pill) {
+    display: none;
+  }
+
+  .nav .pill {
+    font-size: .875rem;
+  }
+}

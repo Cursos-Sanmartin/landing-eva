@@ -221,3 +221,76 @@
     animation: none;
   }
 }
+
+
+/* ---------- Tablet: una sola columna ---------- */
+@media (max-width: 64rem) {
+  .hero {
+    padding: 8rem 0 8rem;
+  }
+
+  .hero-grid {
+    grid-template-columns: 1fr;
+    gap: 3rem;
+  }
+
+  .hero-art {
+    width: 100%;
+    max-width: 36rem;
+    height: 24rem;
+    margin-inline: auto;
+  }
+
+  .badge-ca {
+    top: -2.5rem;
+    height: 5.5rem;
+  }
+
+  /* El círculo azul baja detrás de las ventanitas, así no tapa "crearon" */
+  .hero::before {
+    top: auto;
+    bottom: -14rem;
+    right: -16rem;
+    width: 42rem;
+    height: 42rem;
+  }
+
+  .hero::after {
+    display: none;
+  }
+}
+
+/* ---------- Celular ---------- */
+@media (max-width: 40rem) {
+  .hero {
+    padding: 7rem 0 7rem;
+  }
+
+  .hero-art {
+    height: 17rem;
+  }
+
+  .hero-art .browser:nth-child(2) {
+    top: 5rem;
+  }
+
+  .hero-art .browser:nth-child(3) {
+    top: 10.5rem;
+  }
+
+  .badge-ca {
+    display: none;
+  }
+
+  .stats {
+    gap: 1.5rem;
+  }
+
+  .stats b {
+    font-size: 2rem;
+  }
+
+  .hero-wave {
+    height: 3.5rem;
+  }
+}

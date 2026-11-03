@@ -485,3 +485,69 @@
   color: var(--muted);
 }
 
+
+/* ---------- Tablet y celular: la card arriba, las unidades pasan por debajo ---------- */
+@media (max-width: 64rem) {
+  .scrolly {
+    grid-template-columns: 1fr;
+    gap: 0;
+    margin-top: 3rem;
+  }
+
+  /* En una sola columna lo que se pega arriba es todo el contenedor de la card */
+  .builder-wrap {
+    position: sticky;
+    top: 4.5rem;
+    z-index: 2;
+    max-width: 36rem;
+    width: 100%;
+    margin-inline: auto;
+  }
+
+  .builder {
+    position: static;
+    padding: 1rem;
+    border-radius: 1.375rem;
+  }
+
+  .builder-top {
+    margin-bottom: .75rem;
+  }
+
+  .builder-top b {
+    font-size: 1.125rem;
+  }
+
+  .ring {
+    width: 3rem;
+    height: 3rem;
+  }
+
+  .ring span {
+    font-size: .75rem;
+  }
+
+  /* Las unidades, del mismo ancho que la card y alineadas con ella */
+  .steps {
+    width: 100%;
+    max-width: 36rem;
+    margin-inline: auto;
+    padding: 10vh 0 40vh;
+  }
+
+  .step {
+    min-height: 50vh;
+    padding-left: 1.25rem;
+  }
+
+  .step-num {
+    font-size: 3rem;
+  }
+}
+
+/* ---------- Celular: sin los chips, para que la card ocupe menos ---------- */
+@media (max-width: 40rem) {
+  .builder-chips {
+    display: none;
+  }
+}

@@ -130,3 +130,42 @@
   outline: 3px solid var(--tc);
   outline-offset: 3px;
 }
+
+/* ---------- Tablet: 3 por fila ---------- */
+@media (max-width: 64rem) {
+  .tiles {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+
+/* ---------- Celular: 2 por fila ---------- */
+@media (max-width: 40rem) {
+  .tiles {
+    grid-template-columns: repeat(2, 1fr);
+    gap: .75rem;
+  }
+
+  .tile-body {
+    padding: 0 .875rem 1rem;
+  }
+
+  .tile-icon {
+    width: 2.5rem;
+    height: 2.5rem;
+    margin-top: -1.25rem;
+    border-radius: .75rem;
+  }
+
+  .tile-icon svg {
+    width: 1.125rem;
+    height: 1.125rem;
+  }
+
+  .tile b {
+    font-size: .9375rem;
+  }
+
+  .tile-go {
+    display: none;
+  }
+}
