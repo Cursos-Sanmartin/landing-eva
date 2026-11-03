@@ -10,7 +10,7 @@
 .tiles {
   display: grid;
   grid-template-columns: repeat(5, 1fr);
-  gap: 1rem;
+  gap: 1.25rem;
   margin-top: 2.75rem;
 }
 
@@ -18,9 +18,6 @@
   position: relative;
   display: flex;
   flex-direction: column;
-  gap: .375rem;
-  min-height: 11.875rem;
-  padding: 1.375rem 1.25rem;
   overflow: hidden;
   border: 1.5px solid var(--line);
   border-radius: var(--radius);
@@ -30,35 +27,58 @@
   transition: transform .3s, box-shadow .3s, border-color .3s;
 }
 
-/* Círculo de color en la esquina, que crece al pasar el mouse */
-.tile::before {
-  content: "";
-  position: absolute;
-  right: -3.125rem;
-  bottom: -3.75rem;
-  width: 8.125rem;
-  height: 8.125rem;
-  border-radius: 50%;
-  background: color-mix(in srgb, var(--tc) 12%, transparent);
-  transition: transform .4s;
-}
-
 .tile:hover {
   transform: translateY(-.3125rem);
   border-color: var(--tc);
   box-shadow: 0 18px 40px -20px color-mix(in srgb, var(--tc) 70%, transparent);
 }
 
-.tile:hover::before {
-  transform: scale(1.6);
+/* Zona de la imagen: si no hay foto, se ve un degradé con el ícono */
+.tile-media {
+  display: grid;
+  place-items: center;
+  aspect-ratio: 4 / 3;
+  overflow: hidden;
+  background: linear-gradient(150deg, var(--tc), color-mix(in srgb, var(--tc) 55%, var(--navy)));
+  color: #fff;
 }
 
+.tile-media img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transition: transform .6s;
+}
+
+.tile-media > svg {
+  width: 38%;
+  height: 38%;
+  opacity: .9;
+  transition: transform .6s;
+}
+
+/* La imagen (o el ícono grande) se agranda un poco al pasar el mouse */
+.tile:hover .tile-media img,
+.tile:hover .tile-media > svg {
+  transform: scale(1.06);
+}
+
+.tile-body {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: .375rem;
+  padding: 0 1.25rem 1.375rem;
+}
+
+/* Ícono chico que se monta sobre el borde de la imagen */
 .tile-icon {
   display: grid;
   place-items: center;
   width: 3.25rem;
   height: 3.25rem;
-  margin-bottom: auto;
+  margin-top: -1.625rem;
+  border: 3px solid #fff;
   border-radius: 1rem;
   background: color-mix(in srgb, var(--tc) 13%, #fff);
   color: var(--tc);
@@ -66,8 +86,8 @@
 }
 
 .tile-icon svg {
-  width: 1.625rem;
-  height: 1.625rem;
+  width: 1.5rem;
+  height: 1.5rem;
 }
 
 .tile:hover .tile-icon {
@@ -76,15 +96,13 @@
 }
 
 .tile b {
-  position: relative;
-  margin-top: 1.125rem;
-  font-size: 1.0625rem;
+  margin-top: .75rem;
+  font-size: 1.125rem;
   font-weight: 700;
   line-height: 1.2;
 }
 
 .tile-count {
-  position: relative;
   font-size: .8125rem;
   font-weight: 600;
   color: var(--muted);
@@ -93,8 +111,8 @@
 /* Flechita que aparece al pasar el mouse */
 .tile-go {
   position: absolute;
-  top: 1.375rem;
   right: 1.25rem;
+  bottom: 1.375rem;
   width: 1.25rem;
   height: 1.25rem;
   color: var(--tc);

@@ -1,0 +1,138 @@
+/* ---------- Edición 2027 ---------- */
+.join {
+  position: relative;
+  overflow: hidden;
+  background: var(--navy);
+  color: #fff;
+}
+
+/* Círculo celeste arriba a la derecha y aro abajo a la izquierda */
+.join::before {
+  content: "";
+  position: absolute;
+  top: -18.75rem;
+  right: -15rem;
+  width: 40rem;
+  height: 40rem;
+  border-radius: 50%;
+  background: var(--cyan);
+  opacity: .22;
+}
+
+.join::after {
+  content: "";
+  position: absolute;
+  bottom: -16.25rem;
+  left: -13.75rem;
+  width: 26.25rem;
+  height: 26.25rem;
+  border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, .12);
+}
+
+.join-grid {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  grid-template-columns: 1.1fr .9fr;
+  gap: 3.75rem;
+  align-items: center;
+}
+
+.join-kicker {
+  color: var(--sun);
+}
+
+.join h2 {
+  color: #fff;
+}
+
+.join h2 em {
+  font-style: normal;
+  color: var(--sun);
+}
+
+.join-lead {
+  max-width: 35rem;
+  margin-top: 1rem;
+  font-size: 1.125rem;
+  font-weight: 500;
+  opacity: .9;
+}
+
+/* Los tres pasos */
+.join-steps {
+  display: grid;
+  gap: .875rem;
+  margin-top: 2.125rem;
+  list-style: none;
+}
+
+.join-step {
+  display: flex;
+  align-items: center;
+  gap: 1.125rem;
+  padding: 1.25rem 1.375rem;
+  border: 1px solid rgba(255, 255, 255, .14);
+  border-radius: 1.125rem;
+  background: rgba(255, 255, 255, .07);
+  font-weight: 600;
+}
+
+.join-step b {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 2.75rem;
+  height: 2.75rem;
+  border-radius: 50%;
+  background: var(--sun);
+  color: var(--navy);
+  font-weight: 800;
+}
+
+/* Tarjeta blanca con la fecha */
+.join-card {
+  padding: 2.5rem;
+  border-radius: 1.75rem;
+  background: #fff;
+  color: var(--navy);
+  box-shadow: 0 40px 80px -40px rgba(0, 0, 0, .6);
+}
+
+.join-icon {
+  display: grid;
+  place-items: center;
+  width: 3.75rem;
+  height: 3.75rem;
+  border-radius: 1.125rem;
+  background: color-mix(in srgb, var(--sun) 55%, #fff);
+}
+
+.join-icon svg {
+  width: 1.75rem;
+  height: 1.75rem;
+}
+
+.join-card small {
+  display: block;
+  margin-top: 1.5rem;
+  font-size: .8125rem;
+  font-weight: 700;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  color: var(--cyan);
+}
+
+.join-card strong {
+  display: block;
+  margin: .375rem 0 .875rem;
+  font-size: clamp(2rem, 3.6vw, 2.75rem);
+  line-height: 1.05;
+  letter-spacing: -.03em;
+}
+
+.join-card p {
+  font-weight: 500;
+  color: var(--muted);
+}

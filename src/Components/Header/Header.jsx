@@ -24,10 +24,9 @@ function Header() {
           <img src="/eva-logo.png" alt="EVA" className="logo-dark" />
         </Link>
         <nav className="nav">
-          <Link to="/#proyectos">El proyecto</Link>
           <Link to="/#programa">El programa</Link>
           <Link to="/#tematicas">Temáticas</Link>
-          <Link to="/#inscripcion" className="pill">Inscripción 2027</Link>
+          <Link to="/#inscripcion" className="pill">Quiero ser parte</Link>
         </nav>
       </div>
     </header>

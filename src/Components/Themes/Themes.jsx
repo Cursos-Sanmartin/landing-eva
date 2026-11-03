@@ -39,8 +39,23 @@ function Themes() {
         </div>
 
         <div className="tiles">
-          {Object.entries(THEMES).map(([slug, theme]) => {
+                    {Object.entries(THEMES).map(([slug, theme]) => {
             const count = projects.filter((p) => p.theme === slug).length;
+
+            // El ícono lo usamos dos veces: grande (si no hay foto) y chico
+            const icon = (
+              <svg
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                aria-hidden="true"
+              >
+                {THEME_ICONS[slug]}
+              </svg>
+            );
 
             return (
               <Link
@@ -49,21 +64,20 @@ function Themes() {
                 to={`/tematicas/${slug}`}
                 style={{ "--tc": theme.color }}
               >
-                <span className="tile-icon">
-                  <svg
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    aria-hidden="true"
-                  >
-                    {THEME_ICONS[slug]}
-                  </svg>
+                <span className="tile-media">
+                  {theme.image ? (
+                    <img src={theme.image} alt="" loading="lazy" />
+                  ) : (
+                    icon
+                  )}
                 </span>
-                <b>{theme.name}</b>
-                <span className="tile-count">{countLabel(count)}</span>
+
+                <span className="tile-body">
+                  <span className="tile-icon">{icon}</span>
+                  <b>{theme.name}</b>
+                  <span className="tile-count">{countLabel(count)}</span>
+                </span>
+
                 <svg
                   className="tile-go"
                   viewBox="0 0 24 24"
@@ -78,6 +92,7 @@ function Themes() {
               </Link>
             );
           })}
+          
         </div>
       </div>
     </section>

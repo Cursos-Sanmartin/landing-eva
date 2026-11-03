@@ -1,9 +1,9 @@
 import { useEffect } from "react";
 import { useLocation } from "react-router";
 import Hero from "../Components/Hero/Hero";
-import Projects from "../Components/Projects/Projects";
 import Program from "../Components/Program/Program";
 import Themes from "../Components/Themes/Themes";
+import Join from "../Components/Join/Join";
 
 function Home() {
   const { hash, key } = useLocation();
@@ -20,9 +20,9 @@ function Home() {
   return (
     <>
       <Hero />
-      <Projects />
       <Program />
       <Themes />
+      <Join />
     </>
   );
 }

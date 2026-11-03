@@ -2,6 +2,7 @@ import { Routes, Route } from 'react-router'
 import Header from './Components/Header/Header'
 import Home from './pages/Home'
 import ThemePage from './pages/ThemePage'
+import Footer from './Components/Footer/Footer'
 
 function App() {
   return (
@@ -13,6 +14,7 @@ function App() {
           <Route path="/tematicas/:slug" element={<ThemePage />} />
         </Routes>
       </main>
+      <Footer />
     </>
   )
 }
