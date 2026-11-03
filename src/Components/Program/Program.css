@@ -33,6 +33,12 @@
   border: 1px solid var(--line);
   border-radius: 1.875rem;
   box-shadow: 0 40px 80px -45px rgba(10, 46, 94, .55);
+  transition: box-shadow .6s;
+}
+
+/* Al terminar las 6 unidades, la card se pone dorada */
+.builder.final {
+  box-shadow: 0 40px 90px -40px rgba(242, 183, 5, .75);
 }
 
 .builder-top {
@@ -79,7 +85,11 @@
 .ring .ring-fg {
   stroke: var(--cyan);
   stroke-linecap: round;
-  transition: stroke-dashoffset .8s cubic-bezier(.3, .7, .2, 1);
+  transition: stroke-dashoffset .8s cubic-bezier(.3, .7, .2, 1), stroke .6s;
+}
+
+.builder.final .ring .ring-fg {
+  stroke: #f2b705;
 }
 
 .ring span {
@@ -112,7 +122,11 @@
   place-items: center;
   font-size: .9375rem;
   font-weight: 700;
-  color: #9db3c8;
+ transition: opacity .4s;
+}
+
+.builder-empty.hidden {
+  opacity: 0;
 }
 
 /* Chips de unidades */
@@ -154,6 +168,10 @@
 .chip-unit.on svg {
   opacity: 1;
   color: var(--cyan);
+}
+
+.builder.final .chip-unit.on {
+  background: #fff4d1;
 }
 
 /* Las unidades */

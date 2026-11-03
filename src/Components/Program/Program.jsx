@@ -1,18 +1,58 @@
 import "../BrowserMock/BrowserMock.css";
 import "./Program.css";
+import { useEffect, useRef, useState } from "react";
+import "../BrowserMock/BrowserMock.css";
+import "./Program.css";
 
 const UNITS = [
-  { title: "Primeros pasos", text: "Conocés las bases del curso y arrancás tu actividad." },
-  { title: "Sumás herramientas", text: "Nuevos conceptos que aplicás sobre lo que ya hiciste." },
-  { title: "Toma forma", text: "La actividad crece y empieza a parecerse a un proyecto." },
-  { title: "Profundizás", text: "Conceptos más avanzados para darle identidad propia." },
-  { title: "Ajustás detalles", text: "Revisás, mejorás y preparás todo para el cierre." },
-  { title: "Integrás todo", text: "Reunís lo aprendido en las seis unidades en tu trabajo final." },
+  {
+    title: "Primeros pasos",
+    text: "Conocés las bases del curso y arrancás tu actividad.",
+  },
+  {
+    title: "Sumás herramientas",
+    text: "Nuevos conceptos que aplicás sobre lo que ya hiciste.",
+  },
+  {
+    title: "Toma forma",
+    text: "La actividad crece y empieza a parecerse a un proyecto.",
+  },
+  {
+    title: "Profundizás",
+    text: "Conceptos más avanzados para darle identidad propia.",
+  },
+  {
+    title: "Ajustás detalles",
+    text: "Revisás, mejorás y preparás todo para el cierre.",
+  },
+  {
+    title: "Integrás todo",
+    text: "Reunís lo aprendido en las seis unidades en tu trabajo final.",
+  },
 ];
 
 function Program() {
-  // Día 4: este número lo va a cambiar el scroll
-  const step = 0;
+  const [step, setStep] = useState(0);
+  const stepsRef = useRef(null);
+
+  useEffect(() => {
+    const items = stepsRef.current.querySelectorAll(".step");
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          if (entry.isIntersecting) {
+            setStep(Number(entry.target.dataset.step));
+          }
+        });
+      },
+      { rootMargin: "-45% 0px -45% 0px" },
+    );
+
+    items.forEach((item) => observer.observe(item));
+
+    return () => observer.disconnect();
+  }, []);
   const done = Math.min(step, UNITS.length);
   const percent = Math.round((done / UNITS.length) * 100);
 
@@ -34,7 +74,7 @@ function Program() {
         <div className="scrolly">
           {/* Columna izquierda: la card que se queda quieta */}
           <div className="builder-wrap">
-            <div className="builder">
+            <div className={`builder ${step > UNITS.length ? "final" : ""}`}>
               <div className="builder-top">
                 <div>
                   <small>Actividad progresiva</small>
@@ -66,7 +106,9 @@ function Program() {
                   <span>mi-trabajo-final.com</span>
                 </div>
                 <div className="builder-canvas">
-                  <div className="builder-empty">Empezá por la Unidad 1</div>
+                  <div className={`builder-empty ${step > 0 ? "hidden" : ""}`}>
+                    Empezá por la Unidad 1
+                  </div>
                 </div>
               </div>
 
@@ -95,20 +137,30 @@ function Program() {
           </div>
 
           {/* Columna derecha: las unidades que se scrollean */}
-          <ol className="steps" aria-label="Recorrido del programa">
+          <ol
+            className="steps"
+            ref={stepsRef}
+            aria-label="Recorrido del programa"
+          >
             {UNITS.map((unit, i) => (
               <li
                 key={unit.title}
+                data-step={i + 1}
                 className={`step ${step === i + 1 ? "active" : ""}`}
               >
-                <span className="step-num">{String(i + 1).padStart(2, "0")}</span>
+                <span className="step-num">
+                  {String(i + 1).padStart(2, "0")}
+                </span>
                 <small>Unidad {i + 1}</small>
                 <h3>{unit.title}</h3>
                 <p>{unit.text}</p>
               </li>
             ))}
 
-            <li className={`step final ${step > UNITS.length ? "active" : ""}`}>
+            <li
+              data-step={UNITS.length + 1}
+              className={`step final ${step > UNITS.length ? "active" : ""}`}
+            >
               <span className="step-num">
                 <svg
                   viewBox="0 0 24 24"
