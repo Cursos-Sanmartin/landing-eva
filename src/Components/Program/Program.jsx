@@ -1,8 +1,7 @@
-import "../BrowserMock/BrowserMock.css";
-import "./Program.css";
 import { useEffect, useRef, useState } from "react";
 import "../BrowserMock/BrowserMock.css";
 import "./Program.css";
+import UnitKit from "../UnitKit/UnitKit";
 
 const UNITS = [
   {
@@ -70,7 +69,7 @@ function Program() {
             crece, hasta completar el trabajo final.
           </p>
         </div>
-
+        <UnitKit />
         <div className="scrolly">
           {/* Columna izquierda: la card que se queda quieta */}
           <div className="builder-wrap">

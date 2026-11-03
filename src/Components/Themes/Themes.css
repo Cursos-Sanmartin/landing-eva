@@ -1,0 +1,114 @@
+/* ---------- Diez caminos para crear ---------- */
+.themes-head {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: end;
+  gap: 1.875rem;
+}
+
+.tiles {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 1rem;
+  margin-top: 2.75rem;
+}
+
+.tile {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: .375rem;
+  min-height: 11.875rem;
+  padding: 1.375rem 1.25rem;
+  overflow: hidden;
+  border: 1.5px solid var(--line);
+  border-radius: var(--radius);
+  background: #fff;
+  color: var(--navy);
+  text-decoration: none;
+  transition: transform .3s, box-shadow .3s, border-color .3s;
+}
+
+/* Círculo de color en la esquina, que crece al pasar el mouse */
+.tile::before {
+  content: "";
+  position: absolute;
+  right: -3.125rem;
+  bottom: -3.75rem;
+  width: 8.125rem;
+  height: 8.125rem;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--tc) 12%, transparent);
+  transition: transform .4s;
+}
+
+.tile:hover {
+  transform: translateY(-.3125rem);
+  border-color: var(--tc);
+  box-shadow: 0 18px 40px -20px color-mix(in srgb, var(--tc) 70%, transparent);
+}
+
+.tile:hover::before {
+  transform: scale(1.6);
+}
+
+.tile-icon {
+  display: grid;
+  place-items: center;
+  width: 3.25rem;
+  height: 3.25rem;
+  margin-bottom: auto;
+  border-radius: 1rem;
+  background: color-mix(in srgb, var(--tc) 13%, #fff);
+  color: var(--tc);
+  transition: background .3s, color .3s;
+}
+
+.tile-icon svg {
+  width: 1.625rem;
+  height: 1.625rem;
+}
+
+.tile:hover .tile-icon {
+  background: var(--tc);
+  color: #fff;
+}
+
+.tile b {
+  position: relative;
+  margin-top: 1.125rem;
+  font-size: 1.0625rem;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.tile-count {
+  position: relative;
+  font-size: .8125rem;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+/* Flechita que aparece al pasar el mouse */
+.tile-go {
+  position: absolute;
+  top: 1.375rem;
+  right: 1.25rem;
+  width: 1.25rem;
+  height: 1.25rem;
+  color: var(--tc);
+  opacity: 0;
+  transform: translateX(-.375rem);
+  transition: opacity .3s, transform .3s;
+}
+
+.tile:hover .tile-go {
+  opacity: 1;
+  transform: none;
+}
+
+.tile:focus-visible {
+  outline: 3px solid var(--tc);
+  outline-offset: 3px;
+}

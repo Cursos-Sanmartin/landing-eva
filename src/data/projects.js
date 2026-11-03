@@ -1,16 +1,56 @@
 
 //Ver si podemos poner los themes reales de eva...
 export const THEMES = {
-  "metodologias-agiles": { name: "Metodologías ágiles", color: "#ff7a59" },
-  "ciencia-de-datos": { name: "Ciencia de datos", color: "#00a9e9" },
-  ia: { name: "Inteligencia artificial", color: "#7b5cff" },
-  marketing: { name: "Marketing", color: "#e5487f" },
-  streaming: { name: "Streaming", color: "#f0544f" },
-  "programacion-web": { name: "Programación web", color: "#2563eb" },
-  videojuegos: { name: "Videojuegos", color: "#22b573" },
-  robotica: { name: "Robótica", color: "#f59e0b" },
-  "diseno-grafico": { name: "Diseño gráfico", color: "#14b8a6" },
-  "diseno-ux-ui": { name: "Diseño UX/UI", color: "#c026d3" },
+  "metodologias-agiles": {
+    name: "Metodologías ágiles",
+    color: "#ff7a59",
+    description: "Organizar proyectos en equipo con Scrum, Kanban y entregas cortas.",
+  },
+  "ciencia-de-datos": {
+    name: "Ciencia de datos",
+    color: "#00a9e9",
+    description: "Recolectar, ordenar y contar historias con datos reales.",
+  },
+  ia: {
+    name: "Inteligencia artificial",
+    color: "#7b5cff",
+    description: "Entender cómo funciona la IA y usarla de forma creativa y responsable.",
+  },
+  marketing: {
+    name: "Marketing",
+    color: "#e5487f",
+    description: "Crear marcas, campañas y contenido para redes que conecten con la gente.",
+  },
+  streaming: {
+    name: "Streaming",
+    color: "#f0544f",
+    description: "Producir transmisiones en vivo: guion, cámara, sonido y comunidad.",
+  },
+  "programacion-web": {
+    name: "Programación web",
+    color: "#2563eb",
+    description: "Crear y publicar sitios web propios con HTML, CSS y JavaScript.",
+  },
+  videojuegos: {
+    name: "Videojuegos",
+    color: "#22b573",
+    description: "Diseñar y programar juegos: mecánicas, niveles, arte y sonido.",
+  },
+  robotica: {
+    name: "Robótica",
+    color: "#f59e0b",
+    description: "Armar y programar robots que sienten, deciden y se mueven.",
+  },
+  "diseno-grafico": {
+    name: "Diseño gráfico",
+    color: "#14b8a6",
+    description: "Comunicar con imágenes: identidad, tipografía, color y composición.",
+  },
+  "diseno-ux-ui": {
+    name: "Diseño UX/UI",
+    color: "#c026d3",
+    description: "Diseñar apps y webs fáciles de usar, pensadas desde las personas.",
+  },
 };
 
 // Datos de relleno para visualizar las cards de proyectos
