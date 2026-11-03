@@ -1,3 +1,4 @@
+import { Link } from 'react-router';
 import {useState, useEffect} from 'react';
 import './Header.css';
 
@@ -18,15 +19,15 @@ function Header() {
   return(
     <header className={`header ${scrolled ? 'scrolled' : ''}`}>
       <div className="wrap">
-        <a href="#" className="logo">
-          <img src="eva-logo-blanco.png" alt="EVA" className="logo-light" />
-          <img src="eva-logo.png" alt="EVA" className="logo-dark" />
-        </a>
+                <Link to="/" className="logo">
+          <img src="/eva-logo-blanco.png" alt="EVA" className="logo-light" />
+          <img src="/eva-logo.png" alt="EVA" className="logo-dark" />
+        </Link>
         <nav className="nav">
-          <a href="#proyecto">El proyecto</a>
-          <a href="#programa">El programa</a>
-          <a href="#tematicas">Temáticas</a>
-          <a href="#inscripcion" className="pill">Inscripción 2027</a>
+          <Link to="/#proyectos">El proyecto</Link>
+          <Link to="/#programa">El programa</Link>
+          <Link to="/#tematicas">Temáticas</Link>
+          <Link to="/#inscripcion" className="pill">Inscripción 2027</Link>
         </nav>
       </div>
     </header>

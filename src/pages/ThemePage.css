@@ -1,0 +1,31 @@
+/* Cabecera de color de la temática (provisoria, la completamos el día 6) */
+.theme-hero {
+  padding: 10rem 0 5rem;
+  background: linear-gradient(150deg, var(--navy), color-mix(in srgb, var(--tc, var(--cyan)) 70%, var(--navy)));
+  color: #fff;
+}
+
+.theme-hero h1 {
+  margin: 1rem 0 .75rem;
+  font-size: clamp(2.5rem, 6vw, 4.5rem);
+  line-height: 1;
+  letter-spacing: -.03em;
+}
+
+.theme-hero p {
+  max-width: 36rem;
+  font-size: 1.125rem;
+  font-weight: 500;
+  opacity: .85;
+}
+
+.theme-back {
+  color: #fff;
+  font-weight: 700;
+  text-decoration: none;
+  opacity: .8;
+}
+
+.theme-back:hover {
+  opacity: 1;
+}

@@ -1,3 +1,4 @@
+import { Link } from "react-router";
 import { useEffect, useState } from "react";
 import { THEMES } from "../../data/projects";
 import { THEME_ICONS } from "../../data/themeIcons";
@@ -42,10 +43,10 @@ function Themes() {
             const count = projects.filter((p) => p.theme === slug).length;
 
             return (
-              <a
+              <Link
                 key={slug}
                 className="tile"
-                href={`/tematicas/${slug}`}
+                to={`/tematicas/${slug}`}
                 style={{ "--tc": theme.color }}
               >
                 <span className="tile-icon">
@@ -74,7 +75,7 @@ function Themes() {
                 >
                   <path d="M5 12h14M13 6l6 6-6 6" />
                 </svg>
-              </a>
+              </Link>
             );
           })}
         </div>
