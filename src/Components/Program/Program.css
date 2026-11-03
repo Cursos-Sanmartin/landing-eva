@@ -113,6 +113,12 @@
   aspect-ratio: 16 / 10.5;
   overflow: hidden;
   background: #fff;
+  transition: background .8s;
+}
+
+/* Con el trabajo terminado, el fondo toma un celeste suave */
+.builder-canvas.done {
+  background: linear-gradient(160deg, #fff, #eef8fe);
 }
 
 .builder-empty {
@@ -127,6 +133,227 @@
 
 .builder-empty.hidden {
   opacity: 0;
+}
+
+/* ---------- Capas que arman el trabajo ---------- */
+.layer {
+  position: absolute;
+  inset: 0;
+}
+
+.layer i {
+  position: absolute;
+  display: block;
+}
+
+/* Cada pieza arranca invisible, un poco más abajo y más chica */
+.layer > * {
+  opacity: 0;
+  transform: translateY(.875rem) scale(.96);
+  transition: opacity .55s, transform .65s cubic-bezier(.2, .8, .2, 1.2);
+}
+
+.layer.show > * {
+  opacity: 1;
+  transform: none;
+}
+
+/* Las piezas de una misma capa aparecen de a una */
+.layer > :nth-child(2) { transition-delay: .08s; }
+.layer > :nth-child(3) { transition-delay: .16s; }
+.layer > :nth-child(4) { transition-delay: .24s; }
+.layer > :nth-child(5) { transition-delay: .32s; }
+
+/* Capa 1: boceto con borde punteado */
+.sketch {
+  border: 2px dashed #c9d9e8;
+  border-radius: .625rem;
+}
+
+.sketch-nav {
+  top: 6%;
+  left: 5%;
+  right: 5%;
+  height: 9%;
+}
+
+.sketch-hero {
+  top: 20%;
+  left: 5%;
+  right: 5%;
+  height: 38%;
+}
+
+.sketch-card {
+  top: 63%;
+  width: 28%;
+  height: 30%;
+}
+
+.card-1 { left: 5%; }
+.card-2 { left: 36%; }
+.card-3 { left: 67%; }
+
+/* Capa 2: barra de navegación */
+.nav-bar {
+  top: 6%;
+  left: 5%;
+  right: 5%;
+  height: 9%;
+  border-radius: .625rem;
+  background: var(--navy);
+}
+
+.nav-bar b {
+  position: absolute;
+  top: 30%;
+  left: 3%;
+  width: 12%;
+  height: 40%;
+  border-radius: .375rem;
+  background: var(--cyan);
+}
+
+.nav-bar u {
+  position: absolute;
+  top: 42%;
+  width: 7%;
+  height: 16%;
+  border-radius: .25rem;
+  background: rgba(255, 255, 255, .55);
+}
+
+.nav-bar u:nth-of-type(1) { right: 26%; }
+.nav-bar u:nth-of-type(2) { right: 16%; }
+.nav-bar u:nth-of-type(3) { right: 6%; }
+
+/* Capa 3: portada */
+.hero-title {
+  top: 26%;
+  left: 8%;
+  width: 38%;
+  height: 7%;
+  border-radius: .375rem;
+  background: var(--navy);
+}
+
+.hero-title.short {
+  top: 36%;
+  width: 28%;
+}
+
+.hero-text {
+  top: 47%;
+  left: 8%;
+  width: 34%;
+  height: 3.5%;
+  border-radius: .25rem;
+  background: #cfe0ee;
+}
+
+.hero-image {
+  top: 22%;
+  right: 8%;
+  width: 38%;
+  height: 34%;
+  border-radius: .875rem;
+  background: linear-gradient(135deg, var(--cyan), #7b5cff);
+}
+
+/* Capa 4: tarjetas con una franja de color arriba */
+.mini-card {
+  top: 63%;
+  width: 28%;
+  height: 30%;
+  overflow: hidden;
+  border-radius: .75rem;
+  background: #fff;
+  box-shadow: 0 10px 22px -12px rgba(10, 46, 94, .45);
+}
+
+.mini-card::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 55%;
+}
+
+.mini-card.card-1::before { background: #ff7a59; }
+.mini-card.card-2::before { background: #22b573; }
+.mini-card.card-3::before { background: #f59e0b; }
+
+/* Capa 5: botón, gráfico y estrellas */
+.hero-button {
+  top: 52.5%;
+  left: 8%;
+  width: 14%;
+  height: 5%;
+  border-radius: 999px;
+  background: var(--cyan);
+}
+
+.chart {
+  position: absolute;
+  top: 30%;
+  right: 11%;
+  width: 22%;
+  height: 20%;
+  display: flex;
+  align-items: flex-end;
+  gap: 8%;
+}
+
+.chart i {
+  position: static;
+  flex: 1;
+  border-radius: .1875rem .1875rem 0 0;
+  background: rgba(255, 255, 255, .9);
+}
+
+.chart i:nth-child(1) { height: 40%; }
+.chart i:nth-child(2) { height: 75%; }
+.chart i:nth-child(3) { height: 55%; }
+.chart i:nth-child(4) { height: 100%; }
+
+.star {
+  width: 4%;
+  aspect-ratio: 1;
+  background: var(--sun);
+  clip-path: polygon(50% 0, 61% 38%, 100% 50%, 61% 62%, 50% 100%, 39% 62%, 0 50%, 39% 38%);
+}
+
+.star-1 {
+  top: 17%;
+  right: 6%;
+}
+
+.star-2 {
+  top: 24%;
+  left: 44%;
+  width: 3%;
+}
+
+/* Capa 6: sello de publicado */
+.published {
+  position: absolute;
+  right: 5%;
+  bottom: 4%;
+  display: inline-flex;
+  align-items: center;
+  gap: .375rem;
+  padding: .375rem .75rem .375rem .5rem;
+  border-radius: 999px;
+  background: var(--navy);
+  color: #fff;
+  font-size: .75rem;
+  font-weight: 700;
+}
+
+.published svg {
+  width: 1rem;
+  height: 1rem;
+  padding: .125rem;
+  border-radius: 50%;
+  background: #22b573;
 }
 
 /* Chips de unidades */
@@ -249,3 +476,4 @@
   font-weight: 500;
   color: var(--muted);
 }
+

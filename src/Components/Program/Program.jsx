@@ -105,9 +105,73 @@ function Program() {
                   <i></i>
                   <span>mi-trabajo-final.com</span>
                 </div>
-                <div className="builder-canvas">
+                                <div className={`builder-canvas ${step >= UNITS.length ? "done" : ""}`}>
                   <div className={`builder-empty ${step > 0 ? "hidden" : ""}`}>
                     Empezá por la Unidad 1
+                  </div>
+                                    {/* Capa 1: el boceto (se va cuando el trabajo está terminado) */}
+                  <div className={`layer ${step >= 1 && step < UNITS.length ? "show" : ""}`}>
+                    <i className="sketch sketch-nav"></i>
+                    <i className="sketch sketch-hero"></i>
+                    <i className="sketch sketch-card card-1"></i>
+                    <i className="sketch sketch-card card-2"></i>
+                    <i className="sketch sketch-card card-3"></i>
+                  </div>
+
+                  {/* Capa 2: la navegación */}
+                  <div className={`layer ${step >= 2 ? "show" : ""}`}>
+                    <i className="nav-bar">
+                      <b></b>
+                      <u></u>
+                      <u></u>
+                      <u></u>
+                    </i>
+                  </div>
+                  
+                  {/* Capa 3: título e imagen principal */}
+                  <div className={`layer ${step >= 3 ? "show" : ""}`}>
+                    <i className="hero-title"></i>
+                    <i className="hero-title short"></i>
+                    <i className="hero-text"></i>
+                    <i className="hero-image"></i>
+                  </div>
+
+                  {/* Capa 4: las tres tarjetas */}
+                  <div className={`layer ${step >= 4 ? "show" : ""}`}>
+                    <i className="mini-card card-1"></i>
+                    <i className="mini-card card-2"></i>
+                    <i className="mini-card card-3"></i>
+                  </div>
+
+                  {/* Capa 5: detalles */}
+                  <div className={`layer ${step >= 5 ? "show" : ""}`}>
+                    <i className="hero-button"></i>
+                    <span className="chart">
+                      <i></i>
+                      <i></i>
+                      <i></i>
+                      <i></i>
+                    </span>
+                    <i className="star star-1"></i>
+                    <i className="star star-2"></i>
+                  </div>
+
+                  {/* Capa 6: el sello de publicado */}
+                  <div className={`layer ${step >= 6 ? "show" : ""}`}>
+                    <span className="published">
+                      <svg
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="3"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        aria-hidden="true"
+                      >
+                        <path d="m5 12.5 4.5 4.5L19 7.5" />
+                      </svg>
+                      Publicado
+                    </span>
                   </div>
                 </div>
               </div>
