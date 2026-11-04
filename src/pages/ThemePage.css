@@ -3,13 +3,16 @@
   position: relative;
   overflow: hidden;
   padding: 9.375rem 0 10rem;
-  background: linear-gradient(150deg,
-      color-mix(in srgb, var(--tc, var(--cyan)) 72%, var(--navy)),
-      color-mix(in srgb, var(--tc, var(--cyan)) 38%, var(--navy)));
+  /* La paleta del banner, de izquierda a derecha. Si no hay paleta,
+     se usa el color de la temática mezclado con el azul */
+  background: linear-gradient(110deg,
+      var(--from, color-mix(in srgb, var(--tc, var(--cyan)) 72%, var(--navy))),
+      var(--to, color-mix(in srgb, var(--tc, var(--cyan)) 38%, var(--navy))));
   color: #fff;
+  text-shadow: 0 2px 18px rgba(0, 0, 0, .18);
 }
 
-/* Círculo grande de fondo, del color de la temática */
+/* Círculo grande de fondo, blanco translúcido sobre la paleta */
 .theme-hero::before {
   content: "";
   position: absolute;
@@ -18,8 +21,7 @@
   width: 56rem;
   height: 56rem;
   border-radius: 50%;
-  background: color-mix(in srgb, var(--tc, var(--cyan)) 55%, transparent);
-  opacity: .55;
+  background: rgba(255, 255, 255, .12);
 }
 
 .theme-grid {

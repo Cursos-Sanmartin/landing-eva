@@ -49,7 +49,14 @@ function ThemePage() {
 
   return (
     <>
-      <section className="theme-hero" style={{ "--tc": theme.color }}>
+      <section
+        className="theme-hero"
+        style={{
+          "--tc": theme.color,
+          "--from": theme.palette?.[0],
+          "--to": theme.palette?.[1],
+        }}
+      >
         <div className="wrap theme-grid">
           <div>
             <nav className="crumbs" aria-label="Ubicación">
