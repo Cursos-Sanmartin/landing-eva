@@ -3,7 +3,7 @@ import "./Hero.css";
 
 // Tres proyectos reales con su captura (las imágenes están en public/proyectos)
 const MOCKS = [
-  { name: "San Martín Móvil", url: "proyectosm.ai.studio", color: "#4471d7", image: "/proyectos/26.jpg" },
+  { name: "Yvy Ecología", url: "yvy-ecologia.netlify.app", color: "#4471d7", image: "/proyectos/21.jpg" },
   { name: "Desconecta para Conectar", url: "desconectapara.netlify.app", color: "#4471d7", image: "/proyectos/24.jpg" },
   { name: "Decidí Informado/a", url: "decidi-informado.netlify.app", color: "#4471d7", image: "/proyectos/13.jpg" },
 ];
