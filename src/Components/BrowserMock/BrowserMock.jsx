@@ -1,6 +1,6 @@
 import './BrowserMock.css'
 
-function BrowserMock({ name, url, color, art }) {
+function BrowserMock({ name, url, color, art, image }) {
   return (
     <div className="browser" style={{ '--c': color }}>
       <div className="browser-bar">
@@ -10,6 +10,12 @@ function BrowserMock({ name, url, color, art }) {
         <span>{url}</span>
       </div>
 
+      {/* Si hay captura de la web real la mostramos; si no, la página de mentira */}
+      {image ? (
+        <div className="browser-shot">
+          <img src={image} alt={`Captura de ${name}`} loading="lazy" />
+        </div>
+      ) : (
       <div className="mock">
         <div className="mock-nav">
           <b>{name}</b>
@@ -47,6 +53,7 @@ function BrowserMock({ name, url, color, art }) {
           <i></i>
         </div>
       </div>
+      )}
     </div>
   )
 }

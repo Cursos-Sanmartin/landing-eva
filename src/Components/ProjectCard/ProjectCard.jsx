@@ -24,13 +24,23 @@ function ProjectCard({ project }) {
         url={getHost(project.url)}
         color={theme.color}
         art={project.theme === "ciencia-de-datos" ? "data" : undefined}
+        image={project.image}
       />
 
       <div className="project-body">
         <span className="project-theme">{theme.name}</span>
         <h3>{project.name}</h3>
-        <span className="project-students">{project.students}</span>
-        <span className="project-school">{project.school}</span>
+        {/* Si no hay nombres, mostramos solo la escuela */}
+        {project.students ? (
+          <>
+            <span className="project-students">{project.students}</span>
+            <span className="project-school">{project.school}</span>
+          </>
+        ) : (
+          <span className="project-students">
+            Hecho por estudiantes de {project.school}
+          </span>
+        )}
         <p className="project-desc">{project.description}</p>
 
         <a

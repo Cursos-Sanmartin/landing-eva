@@ -53,6 +53,21 @@
   background: color-mix(in srgb, var(--c) 9%, #fff);
 }
 
+/* ---------- Captura de la web real (misma proporción que la de mentira) ---------- */
+.browser-shot {
+  aspect-ratio: 16 / 10;
+  overflow: hidden;
+  background: color-mix(in srgb, var(--c) 9%, #fff);
+}
+
+.browser-shot img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: top;
+}
+
 .mock-nav {
   display: flex;
   justify-content: space-between;
