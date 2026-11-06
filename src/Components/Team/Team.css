@@ -1,0 +1,213 @@
+/* ---------- Nuestro equipo: mismos colores que tenía Edición 2027 ---------- */
+.team {
+  position: relative;
+  overflow: hidden;
+  background: var(--navy);
+  color: #fff;
+}
+
+/* Círculo celeste arriba a la derecha y aro abajo a la izquierda */
+.team::before {
+  content: "";
+  position: absolute;
+  top: -18.75rem;
+  right: -15rem;
+  width: 40rem;
+  height: 40rem;
+  border-radius: 50%;
+  background: var(--cyan);
+  opacity: .22;
+}
+
+.team::after {
+  content: "";
+  position: absolute;
+  bottom: -16.25rem;
+  left: -13.75rem;
+  width: 26.25rem;
+  height: 26.25rem;
+  border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, .12);
+}
+
+.team-inner {
+  position: relative;
+  z-index: 1;
+}
+
+.team-head {
+  max-width: 44rem;
+  margin: 0 auto 4rem;
+  text-align: center;
+}
+
+.team-kicker {
+  color: var(--sun);
+}
+
+.team h2 {
+  color: #fff;
+}
+
+.team h2 em {
+  font-style: normal;
+  color: var(--sun);
+}
+
+/* ---------- El abanico ---------- */
+.fan {
+  --card: clamp(10rem, 15vw, 13.5rem);     /* ancho de cada carta */
+  --overlap: calc(var(--card) * -.38);     /* cuánto se pisan entre sí */
+  display: flex;
+  justify-content: center;
+  padding: 1rem 0 3rem;
+  list-style: none;
+}
+
+.fan-card {
+  position: relative;
+  z-index: var(--z);
+  flex: none;
+  width: var(--card);
+  margin-inline: calc(var(--overlap) / 2);
+  padding: .625rem .625rem 0;
+  border-radius: 1.125rem;
+  background: #fff;
+  color: var(--navy);
+  box-shadow: 0 24px 50px -20px rgba(0, 0, 0, .7);
+  transform-origin: 50% 120%;
+  transform: translateY(var(--drop)) rotate(var(--rot));
+  cursor: pointer;
+  transition:
+    transform .5s cubic-bezier(.2, .7, .2, 1),
+    margin .5s cubic-bezier(.2, .7, .2, 1),
+    box-shadow .3s;
+}
+
+/* Al acercarse, el mazo se abre un poco más */
+.fan:hover .fan-card,
+.fan:focus-within .fan-card {
+  margin-inline: calc(var(--overlap) / 4);
+}
+
+/* La carta elegida sube, se endereza y queda arriba de todas */
+.fan-card:hover,
+.fan-card:focus-visible {
+  z-index: 20;
+  transform: translateY(-1.75rem) rotate(0deg) scale(1.08);
+  box-shadow: 0 0 0 3px var(--sun), 0 40px 70px -25px rgba(0, 0, 0, .8);
+  outline: none;
+}
+
+.fan-photo {
+  position: relative;
+  aspect-ratio: 4 / 5;
+  overflow: hidden;
+  border-radius: .75rem;
+  background: linear-gradient(170deg, var(--sky), var(--teal));
+}
+
+.fan-photo img,
+.fan-photo svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: top;
+}
+
+/* Todas en blanco y negro; la carta elegida recupera el color */
+.fan-photo img {
+  filter: grayscale(1);
+  transition: filter .5s ease;
+}
+
+.fan-card:hover .fan-photo img,
+.fan-card:focus-visible .fan-photo img {
+  filter: grayscale(0);
+}
+
+.fan-photo svg {
+  fill: rgba(255, 255, 255, .55);
+}
+
+/* Número en una pastilla amarilla arriba a la izquierda */
+.fan-num {
+  position: absolute;
+  top: .5rem;
+  left: .5rem;
+  padding: .25rem .5rem;
+  border-radius: 999px;
+  background: var(--sun);
+  color: var(--navy);
+  font-size: .75rem;
+  font-weight: 800;
+}
+
+/* Nombre y rol en el borde blanco de abajo, como una polaroid */
+.fan-info {
+  padding: .75rem .25rem .875rem;
+}
+
+.fan-info strong {
+  display: block;
+  font-size: clamp(.875rem, 1.2vw, 1.0625rem);
+  font-weight: 700;
+  line-height: 1.2;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.fan-info small {
+  display: block;
+  margin-top: .125rem;
+  font-size: .6875rem;
+  font-weight: 800;
+  letter-spacing: .07em;
+  text-transform: uppercase;
+  line-height: 1.3;
+  min-height: 2.6em;                       /* lugar para dos renglones: todas las cartas miden igual */
+  color: var(--cyan);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .fan-card {
+    transition: none;
+  }
+}
+
+/* ---------- Celular: las cartas derechas en fila, se deslizan con el dedo ---------- */
+@media (max-width: 48rem) {
+  .team-head {
+    margin-bottom: 2.5rem;
+  }
+
+  .fan {
+    --card: 11rem;
+    justify-content: flex-start;
+    gap: 1rem;
+    margin-inline: -5.5%;                  /* las cartas llegan al borde de la pantalla */
+    padding: 1.5rem 5.5% 2rem;
+    overflow-x: auto;
+    scroll-snap-type: x mandatory;
+    scrollbar-width: none;
+  }
+
+  .fan::-webkit-scrollbar {
+    display: none;
+  }
+
+  .fan-card,
+  .fan:hover .fan-card,
+  .fan:focus-within .fan-card {
+    margin-inline: 0;
+    transform: none;
+    scroll-snap-align: center;
+  }
+
+  .fan-card:hover,
+  .fan-card:focus-visible {
+    transform: translateY(-.5rem);
+  }
+}

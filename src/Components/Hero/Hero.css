@@ -97,6 +97,13 @@
   box-shadow: 0 12px 30px -10px rgba(10, 46, 94, .7);
 }
 
+/* Botón blanco sólido */
+.btn-white {
+  background: #fff;
+  color: var(--navy);
+  box-shadow: 0 12px 30px -12px rgba(10, 46, 94, .45);
+}
+
 .btn-ghost {
   background: rgba(255, 255, 255, .16);
   color: #fff;
@@ -107,25 +114,13 @@
   background: rgba(255, 255, 255, .26);
 }
 
-/* Contadores */
-.stats {
-  display: flex;
-  gap: 2.25rem;                           
-  margin-top: 2.875rem;                   
-}
-
-.stats b {
-  display: block;
-  font-size: 2.5rem;                       
-  font-weight: 800;
-  line-height: 1;
-  letter-spacing: -.02em;
-}
-
-.stats span {
-  font-size: .875rem;                      
-  font-weight: 600;
-  opacity: .9;
+/* Frase de cierre: 10 temáticas, 30 cursos, infinitas posibilidades */
+.tagline {
+  margin-top: 2.5rem;
+  font-size: clamp(1.25rem, 2.2vw, 1.625rem);
+  font-weight: 700;
+  line-height: 1.3;
+  letter-spacing: -.01em;
 }
 
 /* Círculo azul de fondo  */
@@ -280,14 +275,6 @@
 
   .badge-ca {
     display: none;
-  }
-
-  .stats {
-    gap: 1.5rem;
-  }
-
-  .stats b {
-    font-size: 2rem;
   }
 
   .hero-wave {

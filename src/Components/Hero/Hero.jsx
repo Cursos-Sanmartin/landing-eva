@@ -25,18 +25,17 @@ function Hero() {
           </span>
 
           <h1>
-            Descubrí lo que <em>crearon</em> en EVA
+            ¿Qué podemos hacer con <em>EVA</em>?
           </h1>
 
           <p className="lead">
-            Estudiantes de las escuelas de San Martín diseñaron y publicaron sus
-            propias webs. Este es el lugar para recorrerlas, compartirlas y
-            celebrarlas.
+            Conocé los proyectos realizados por las/os estudiantes de San
+            Martín.
           </p>
 
           <div className="cta">
-            <a className="btn btn-primary" href="#programa">
-              Conocé el programa
+            <a className="btn btn-primary" href="#tematicas">
+              Ver proyectos
               <svg
                 width="18"
                 height="18"
@@ -50,25 +49,14 @@ function Hero() {
                 <path d="M12 5v14M5 12l7 7 7-7" />
               </svg>
             </a>
-            <a className="btn btn-ghost" href="#tematicas">
-              Ver temáticas
+            <a className="btn btn-white" href="#programa">
+              Conocé el programa
             </a>
           </div>
 
-          <div className="stats">
-            <div>
-              <b>12</b>
-              <span>proyectos</span>
-            </div>
-            <div>
-              <b>10</b>
-              <span>temáticas</span>
-            </div>
-            <div>
-              <b>6</b>
-              <span>unidades</span>
-            </div>
-          </div>
+          <p className="tagline">
+            10 temáticas, 30 cursos, infinitas posibilidades
+          </p>
         </div>
 
         <div className="hero-art" aria-hidden="true">

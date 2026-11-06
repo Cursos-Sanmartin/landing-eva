@@ -3,7 +3,7 @@ import { useLocation } from "react-router";
 import Hero from "../Components/Hero/Hero";
 import Program from "../Components/Program/Program";
 import Themes from "../Components/Themes/Themes";
-import Join from "../Components/Join/Join";
+import Team from "../Components/Team/Team";
 
 function Home() {
   const { hash, key } = useLocation();
@@ -22,7 +22,7 @@ function Home() {
       <Hero />
       <Program />
       <Themes />
-      <Join />
+      <Team />
     </>
   );
 }

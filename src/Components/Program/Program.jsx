@@ -6,27 +6,27 @@ import UnitKit from "../UnitKit/UnitKit";
 const UNITS = [
   {
     title: "Primeros pasos",
-    text: "Conocés las bases del curso y arrancás tu actividad.",
+    text: "Comenzarás a conocer fundamentos teóricos sobre la temática elegida.",
   },
   {
-    title: "Sumás herramientas",
-    text: "Nuevos conceptos que aplicás sobre lo que ya hiciste.",
+    title: "Tus primeras ideas",
+    text: "¡Momento creativo! Con lo que vas aprendiendo, podrás trabajar con las ideas iniciales para tu proyecto.",
   },
   {
     title: "Toma forma",
-    text: "La actividad crece y empieza a parecerse a un proyecto.",
+    text: "Las ideas comienzan a pasar al trabajo con herramientas concretas.",
   },
   {
-    title: "Profundizás",
-    text: "Conceptos más avanzados para darle identidad propia.",
+    title: "Profundización",
+    text: "A medida que se profundizan los aprendizajes sobre la temática, tomarás decisiones sobre tu proyecto.",
   },
   {
-    title: "Ajustás detalles",
-    text: "Revisás, mejorás y preparás todo para el cierre.",
+    title: "Ajustar detalles",
+    text: "Pasos finales para el proyecto... ¿qué podés mejorar?",
   },
   {
-    title: "Integrás todo",
-    text: "Reunís lo aprendido en las seis unidades en tu trabajo final.",
+    title: "Último paso",
+    text: "Es momento de integrar todo lo aprendido y realizar una presentación final de tu proyecto.",
   },
 ];
 
@@ -63,13 +63,13 @@ function Program() {
       <div className="wrap">
         <div className="program-head">
           <div>
-            <span className="kicker">El programa</span>
-            <h2>Un recorrido en 6 unidades</h2>
+            <span className="kicker">Tu proyecto en 6 pasos</span>
+            <h2>Aprender, idear y crear</h2>
           </div>
           <p className="section-lead">
-            Cada curso es distinto, pero todos siguen la misma lógica: en cada
-            unidad se trabajan nuevos conceptos que se suman a una actividad que
-            crece, hasta completar el trabajo final.
+            Con EVA podés idear tus proyectos y desarrollarlos mientras aprendés
+            a utilizar herramientas digitales bajo la modalidad de Aprendizaje
+            Basado en Proyectos.
           </p>
         </div>
         <UnitKit />
@@ -245,10 +245,11 @@ function Program() {
                 </svg>
               </span>
               <small>Cierre</small>
-              <h3>Presentación final</h3>
+              <h3>Proyecto finalizado</h3>
               <p>
-                Cada estudiante presenta su trabajo terminado y lo comparte con
-                toda la Comunidad EVA.
+                Al llegar al cierre, no solo habrás aprendido sobre una
+                competencia digital en particular sino que podrás ver reflejado
+                aquello que aprendiste en tu proyecto finalizado.
               </p>
             </li>
           </ol>

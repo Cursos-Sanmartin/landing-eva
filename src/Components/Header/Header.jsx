@@ -26,7 +26,7 @@ function Header() {
         <nav className="nav">
           <Link to="/#programa">El programa</Link>
           <Link to="/#tematicas">Temáticas</Link>
-          <Link to="/#inscripcion" className="pill">Quiero ser parte</Link>
+          <Link to="/#equipo" className="pill">Nuestro equipo</Link>
         </nav>
       </div>
     </header>

@@ -34,7 +34,8 @@ function Themes() {
             <h2>Diez caminos para crear</h2>
           </div>
           <p className="section-lead">
-            Elegí una temática para ver todos los proyectos que hicieron los chicos.
+            Clickeando cada temática vas a poder ver todos los proyectos
+            realizados con EVA por las/os estudiantes.
           </p>
         </div>
 

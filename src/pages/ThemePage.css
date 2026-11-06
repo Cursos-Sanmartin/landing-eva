@@ -65,6 +65,27 @@
   opacity: .95;
 }
 
+/* Contadores en fila: proyectos · escuelas */
+.theme-hero .stats {
+  display: flex;
+  gap: 2.25rem;
+  margin-top: 2.25rem;
+}
+
+.theme-hero .stats b {
+  display: block;
+  font-size: 2.5rem;
+  font-weight: 800;
+  line-height: 1;
+  letter-spacing: -.02em;
+}
+
+.theme-hero .stats span {
+  font-size: .875rem;
+  font-weight: 600;
+  opacity: .9;
+}
+
 /* Círculo con el ícono de la temática */
 .theme-badge {
   position: relative;

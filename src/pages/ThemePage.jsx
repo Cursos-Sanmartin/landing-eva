@@ -106,7 +106,7 @@ function ThemePage() {
       <section>
         <div className="wrap">
           <span className="kicker">Proyectos</span>
-          <h2>Lo que crearon los chicos</h2>
+          <h2>Lo que crearon las/os estudiantes</h2>
 
           {list.length > 0 ? (
             <div className="projects-grid">

@@ -3,7 +3,7 @@ import "./UnitKit.css";
 const KIT = [
   {
     name: "Video",
-    text: "Una clase grabada para ver a tu ritmo.",
+    text: "Encontrarás disponible una clase virtual teórica.",
     icon: (
       <>
         <rect x="2.5" y="5" width="19" height="14" rx="3" />
@@ -12,26 +12,15 @@ const KIT = [
     ),
   },
   {
-    name: "Presentación",
-    text: "Las diapositivas (PPT) con los conceptos clave.",
-    icon: (
-      <>
-        <rect x="3" y="3.5" width="18" height="12" rx="2" />
-        <path d="M12 15.5V20M8 20.5h8M7 11.5l3-3 2 2 4-4" />
-      </>
-    ),
-  },
-  {
-    name: "Material adicional",
-    text: "Lecturas, ejemplos y recursos para profundizar.",
+    name: "Material",
+    text: "Tendrás presentaciones, lecturas, ejemplos y recursos distintos para apoyarte en el estudio.",
     icon: (
       <path d="M4 19.5V5a2 2 0 0 1 2-2h13v15H6a2 2 0 0 0-2 2zm0 0a2 2 0 0 0 2 2h13M9 7h6M9 10.5h6" />
     ),
   },
   {
-    name: "Actividad progresiva",
-    text: "Un paso más de tu proyecto, que se suma al anterior.",
-    highlight: true,
+    name: "Actividades y entregas",
+    text: "En cada unidad, realizarás una actividad. Tu proyecto se construye paso a paso.",
     icon: (
       <>
         <rect x="3" y="3" width="18" height="18" rx="4" />
@@ -39,12 +28,18 @@ const KIT = [
       </>
     ),
   },
+  {
+    name: "Entrega final",
+    text: "Con la entrega final, das por finalizado tu proyecto.",
+    highlight: true,
+    icon: <path d="M5 21V4M5 4h11l-2 4 2 4H5" />,
+  },
 ];
 
 function UnitKit() {
   return (
     <div className="kit">
-      <span className="kit-label">Cada unidad incluye</span>
+      <span className="kit-label">Cada curso cuenta con 6 unidades</span>
 
       <ul className="kit-items">
         {KIT.map((item) => (
