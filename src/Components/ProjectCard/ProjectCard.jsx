@@ -1,4 +1,4 @@
-import { useRef } from "react";
+import { useRef, useState } from "react";
 import BrowserMock from "../BrowserMock/BrowserMock";
 import { THEMES } from "../../data/projects";
 import "./ProjectCard.css";
@@ -15,9 +15,24 @@ function getHost(url) {
 
 function ProjectCard({ project }) {
   const theme = THEMES[project.theme] ?? DEFAULT_THEME;
-  // Sin url es un diseño (imagen): en vez de visitar la web, se abre en grande
-  const isDesign = !project.url && project.image;
+  // Sin url es un trabajo para ver acá mismo: un diseño (image) o varias páginas (pages)
+  const pages = project.pages ?? (project.image ? [project.image] : []);
+  const isDesign = !project.url && pages.length > 0;
+  const isDoc = Boolean(project.pages);
+  const total = pages.length;
+
   const viewer = useRef(null);
+  const touchX = useRef(0);
+  const [page, setPage] = useState(0);
+
+  // Avanza o retrocede sin pasarse de la primera ni de la última página
+  const go = (step) =>
+    setPage((current) => Math.min(total - 1, Math.max(0, current + step)));
+
+  const openViewer = () => {
+    setPage(0);
+    viewer.current.showModal();
+  };
 
   return (
     <article className="project-card" style={{ "--tc": theme.color }}>
@@ -25,7 +40,7 @@ function ProjectCard({ project }) {
 
       {isDesign ? (
         <div className="design-thumb">
-          <img src={project.image} alt="" loading="lazy" />
+          <img src={pages[0]} alt="" loading="lazy" />
         </div>
       ) : (
         <BrowserMock
@@ -57,10 +72,10 @@ function ProjectCard({ project }) {
           <button
             type="button"
             className="project-link is-zoom"
-            onClick={() => viewer.current.showModal()}
+            onClick={openViewer}
             aria-label={`Ver ${project.name} en grande`}
           >
-            Ver en grande
+            {isDoc ? "Ver el trabajo" : "Ver en grande"}
             <svg
               viewBox="0 0 24 24"
               fill="none"
@@ -99,17 +114,36 @@ function ProjectCard({ project }) {
       {isDesign && (
         <dialog
           ref={viewer}
-          className="lightbox"
+          className={isDoc ? "lightbox is-doc" : "lightbox"}
           aria-label={project.name}
           onClick={(e) => {
             // Click afuera de la imagen (en el fondo) cierra el visor
             if (e.target === e.currentTarget) e.currentTarget.close();
           }}
+          onKeyDown={(e) => {
+            if (e.key === "ArrowRight") go(1);
+            if (e.key === "ArrowLeft") go(-1);
+          }}
+          onTouchStart={(e) => {
+            touchX.current = e.touches[0].clientX;
+          }}
+          onTouchEnd={(e) => {
+            // Deslizar con el dedo: más de 50px hacia un lado cambia de página
+            const dx = e.changedTouches[0].clientX - touchX.current;
+            if (dx < -50) go(1);
+            if (dx > 50) go(-1);
+          }}
         >
           <img
-            src={project.image}
-            alt={`${project.name}, diseño de estudiantes de ${project.school}`}
+            key={pages[page]}
+            src={pages[page]}
+            alt={
+              total > 1
+                ? `${project.name}, página ${page + 1} de ${total}`
+                : `${project.name}, trabajo de estudiantes de ${project.school}`
+            }
           />
+
           <button
             type="button"
             className="lightbox-close"
@@ -127,6 +161,49 @@ function ProjectCard({ project }) {
               <path d="M6 6l12 12M18 6L6 18" />
             </svg>
           </button>
+
+          {/* Barra de abajo: flechas y número de página */}
+          {total > 1 && (
+            <div className="lightbox-bar">
+              <button
+                type="button"
+                onClick={() => go(-1)}
+                disabled={page === 0}
+                aria-label="Página anterior"
+              >
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2.4"
+                  strokeLinecap="round"
+                  aria-hidden="true"
+                >
+                  <path d="M15 6l-6 6 6 6" />
+                </svg>
+              </button>
+              <span aria-live="polite">
+                Página {page + 1} de {total}
+              </span>
+              <button
+                type="button"
+                onClick={() => go(1)}
+                disabled={page === total - 1}
+                aria-label="Página siguiente"
+              >
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2.4"
+                  strokeLinecap="round"
+                  aria-hidden="true"
+                >
+                  <path d="M9 6l6 6-6 6" />
+                </svg>
+              </button>
+            </div>
+          )}
         </dialog>
       )}
     </article>
