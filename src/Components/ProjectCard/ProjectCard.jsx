@@ -19,9 +19,11 @@ function ProjectCard({ project }) {
   const pages = project.pages ?? (project.image ? [project.image] : []);
   const isDesign = !project.url && pages.length > 0;
   const isDoc = Boolean(project.pages);
+  const isVideo = Boolean(project.video);
   const total = pages.length;
 
   const viewer = useRef(null);
+  const player = useRef(null);
   const touchX = useRef(0);
   const [page, setPage] = useState(0);
 
@@ -34,13 +36,26 @@ function ProjectCard({ project }) {
     viewer.current.showModal();
   };
 
+  // Cerrar el visor siempre frena el video, si lo hay
+  const closeViewer = () => {
+    player.current?.pause();
+    viewer.current.close();
+  };
+
   return (
     <article className="project-card" style={{ "--tc": theme.color }}>
       {project.example && <span className="tag-example">Ejemplo</span>}
 
       {isDesign ? (
-        <div className="design-thumb">
+        <div className={isVideo ? "design-thumb is-video" : "design-thumb"}>
           <img src={pages[0]} alt="" loading="lazy" />
+          {isVideo && (
+            <span className="play-badge" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="currentColor">
+                <path d="M8 5v14l11-7z" />
+              </svg>
+            </span>
+          )}
         </div>
       ) : (
         <BrowserMock
@@ -75,7 +90,7 @@ function ProjectCard({ project }) {
             onClick={openViewer}
             aria-label={`Ver ${project.name} en grande`}
           >
-            {isDoc ? "Ver el trabajo" : "Ver en grande"}
+            {isVideo ? "Ver el video" : isDoc ? "Ver el trabajo" : "Ver en grande"}
             <svg
               viewBox="0 0 24 24"
               fill="none"
@@ -116,9 +131,11 @@ function ProjectCard({ project }) {
           ref={viewer}
           className={isDoc ? "lightbox is-doc" : "lightbox"}
           aria-label={project.name}
+          // Escape también cierra: frenamos el video antes
+          onCancel={() => player.current?.pause()}
           onClick={(e) => {
             // Click afuera de la imagen (en el fondo) cierra el visor
-            if (e.target === e.currentTarget) e.currentTarget.close();
+            if (e.target === e.currentTarget) closeViewer();
           }}
           onKeyDown={(e) => {
             if (e.key === "ArrowRight") go(1);
@@ -134,20 +151,31 @@ function ProjectCard({ project }) {
             if (dx > 50) go(-1);
           }}
         >
-          <img
-            key={pages[page]}
-            src={pages[page]}
-            alt={
-              total > 1
-                ? `${project.name}, página ${page + 1} de ${total}`
-                : `${project.name}, trabajo de estudiantes de ${project.school}`
-            }
-          />
+          {isVideo ? (
+            <video
+              ref={player}
+              src={project.video}
+              poster={project.image}
+              controls
+              playsInline
+              preload="none"
+            />
+          ) : (
+            <img
+              key={pages[page]}
+              src={pages[page]}
+              alt={
+                total > 1
+                  ? `${project.name}, página ${page + 1} de ${total}`
+                  : `${project.name}, trabajo de estudiantes de ${project.school}`
+              }
+            />
+          )}
 
           <button
             type="button"
             className="lightbox-close"
-            onClick={() => viewer.current.close()}
+            onClick={closeViewer}
             aria-label="Cerrar"
           >
             <svg
