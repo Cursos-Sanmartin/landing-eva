@@ -501,7 +501,7 @@ function interpretWords(t) {
 // Eva hace sola lo básico y claro (abrir, cerrar, ir a una página, leer, recorrer, siguiente, basta, ajustes).
 // Las preguntas, «contame…», «explicame…» y lo que no entiende van a la IA; si la IA no está, usa lo que entendió.
 
-const BASIC = new Set(["open", "closeWork", "page", "tour", "read", "size", "toggle", "reset", "stop", "close", "thanks", "hello", "newTab", "empty"]);
+const BASIC = new Set(["open", "closeWork", "page", "tour", "read", "size", "toggle", "reset", "stop", "close", "thanks", "hello", "newTab"]);
 const NAV_VERBS = /(^| )(llevame|lleva|lleve|llevanos|anda|andate|ir|vamos|volve|volver|entra|entrar|subi|baja|mostrame la seccion)( |$)/;
 const ASKS = /(^| )(contame|conta|contas|contanos|contar|explica|explicame|explicanos|explicas|hablame|decime|deci|que es|que son|como|cuanto|cuantos|cuantas|quien|quienes|por que|para que|de que|donde|cuando|cual|cuales|sabes)( |$)/;
 
@@ -509,6 +509,8 @@ export function wantsAI(raw, intent) {
   const t = normalize(raw);
   if (intent.type === "stop") return false;
   if (ASKS.test(t)) return true;
+  // Abrir siempre lo resuelve la IA (entiende mejor cuál es, mirando la charla); si no responde, Eva lo intenta sola
+  if (intent.type === "open") return true;
   if (intent.type === "go") return !NAV_VERBS.test(t);
   return !BASIC.has(intent.type);
 }

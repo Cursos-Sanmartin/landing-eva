@@ -57,8 +57,10 @@ Recibís lo que una persona le dijo a Eva por voz o por escrito. Puede venir mal
 cortadas) o con pedazos de lo que decía Eva mezclados. Decidí qué acción quiere y respondé solo con el JSON pedido.
 
 Acciones:
-- open: abrir un trabajo. project = el nombre EXACTO de la lista de trabajos; o index = posición en la página
-  (1 = el primero, -1 = el último); o, si dice «este», «ese» o «el que estás contando», no pongas project ni index.
+- open: abrir un trabajo. Siempre que puedas, project = el nombre EXACTO de la lista de trabajos (aunque lo diga
+  incompleto, mal pronunciado o mal transcripto, elegí el que corresponde). Si dice «este», «ese» o «el que estás
+  contando», es el trabajo que Eva está contando ahora o el último que abrió. Si dice una posición, index (1 = el primero
+  de la página, -1 = el último). Si no queda claro cuál, answer preguntando cuál quiere.
 - tour: recorrer la página contando los proyectos. theme = el slug si nombra una temática.
 - program: contar de qué se trata el programa EVA (sus 6 unidades). Usalo cuando pida que le cuenten o le expliquen el
   programa, EVA, «el proyecto» (sin nombrar un trabajo) o de qué se trata todo esto.
@@ -89,6 +91,12 @@ Acciones:
     de qué se trata o que te muestre los proyectos?».
 - unknown: solo si no se entiende lo que dijo (palabras sueltas sin sentido).
 
+Charla: abajo tenés lo último que se dijeron Eva y la persona. Usala para entender respuestas cortas o que se refieren
+a algo anterior: «sí», «dale», «ok», «ese», «el que me dijiste», «no lo abriste». Si Eva acababa de ofrecer algo
+(por ejemplo «¿Querés que lo abramos?») y la persona acepta, hacé esa acción con el nombre EXACTO del trabajo; si la persona
+dice que algo no pasó («no lo abriste»), hacelo. Si rechaza, answer amable ofreciendo otra cosa.
+Si pide que elijas o recomiendes un trabajo, podés abrirlo directamente (open) en vez de preguntar.
+
 Usá solo trabajos y temáticas de las listas. Si dudás entre dos acciones, elegí answer y preguntá qué quiso decir.`;
 
 function describe(context = {}) {
@@ -114,6 +122,14 @@ function describe(context = {}) {
     lines.push("Todos los trabajos (nombre — temática): " + context.projects.map((p) => `${p.name} — ${p.theme}`).join("; ") + ".");
   }
   if (context.about) lines.push(`Sobre EVA: ${context.about}`);
+  if (context.current) lines.push(`Trabajo que Eva está contando ahora en el recorrido («este»): ${context.current}.`);
+  if (context.lastOpened) lines.push(`Último trabajo que abrió o contó Eva: ${context.lastOpened}.`);
+  if (context.history?.length) {
+    const talk = context.history
+      .slice(-8)
+      .map((m) => `${m.from === "user" ? "Persona" : "Eva"}: ${String(m.text || "").slice(0, 300)}`);
+    lines.push(`Charla reciente (lo último está al final):\n${talk.join("\n")}`);
+  }
   if (context.units?.length) lines.push(`Unidades del programa: ${context.units.join("; ")}.`);
   return lines.join("\n");
 }

@@ -194,6 +194,7 @@ function Assistant() {
   const webLinkRef = useRef(null);
   const aiToken = useRef(0);
   const facts = useRef(null);
+  const messagesRef = useRef(messages);
 
   // Aplicar y recordar los ajustes
   useEffect(() => {
@@ -212,6 +213,11 @@ function Assistant() {
     const target = panelRef.current?.querySelector("[data-autofocus]") || inputRef.current;
     target?.focus({ preventScroll: true });
   }, [open, view]);
+
+  // La charla, para pasársela a la IA (así entiende «sí», «ese», «el que me dijiste»)
+  useEffect(() => {
+    messagesRef.current = messages;
+  }, [messages]);
 
   // El último globito siempre a la vista
   useEffect(() => {
@@ -938,6 +944,9 @@ function Assistant() {
       units: Array.from(document.querySelectorAll("#programa .step h3"), (h) => h.textContent.trim()),
       page,
       projectsHere: projectDetails(projectCards().map(cardName)),
+      history: messagesRef.current.slice(-8).map((m) => ({ from: m.from, text: m.text })),
+      lastOpened: lastCard.current?.isConnected ? cardName(lastCard.current) : null,
+      current: readQueue.current.currentCard?.isConnected ? cardName(readQueue.current.currentCard) : null,
       openWork: Boolean(webRef.current || openViewer()),
       paused: Boolean(readQueue.current.paused),
     };
