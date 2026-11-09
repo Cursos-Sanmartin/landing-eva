@@ -699,3 +699,12 @@ html.eva-a11y-contrast .eva-mode,
 html.eva-a11y-contrast .eva-chip {
   border: 1.5px solid #000;
 }
+
+/* Mientras lee o recorre, el panel se achica para dejar ver la página */
+.eva-panel.is-compact .eva-tabs {
+  display: none;
+}
+
+.eva-compact-stop {
+  margin-top: 0.45rem;
+}

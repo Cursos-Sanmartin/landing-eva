@@ -14,13 +14,30 @@ import {
 } from "./accessibility";
 import { THEME_NAMES, WAKE_PHRASE, interpret, isWakePhrase } from "./commands";
 import { onOpenRequest, onWakeToggledByUser, setWakeEnabled, setWakeLive, useWakeEnabled } from "./assistantStore";
+import {
+  cardName,
+  closeOpenViewer,
+  currentThemeSlug,
+  describeCard,
+  describeTile,
+  findCardByName,
+  openCard,
+  openViewer,
+  pickByPosition,
+  projectCards,
+  themeTiles,
+  turnViewerPage,
+  viewerPageLabel,
+  waitFor,
+} from "./pageGuide";
+import { THEMES } from "../../data/projects";
 import "./Assistant.css";
 
 // Asistente de accesibilidad de EVA (prueba).
 // No se ve hasta que lo llaman: diciendo «Eva, ¿estás ahí?» (si la persona activó
 // «Eva por voz» en el header), con Alt + A, o desde «Accesibilidad» en el pie de página.
-// Entiende voz, texto y botones, lee la página en voz alta y cambia el tamaño del texto,
-// el contraste y más.
+// Entiende voz, texto y botones, lee la página en voz alta, recorre los proyectos contándolos,
+// abre y cierra trabajos, y cambia el tamaño del texto, el contraste y más.
 
 const MODES = [
   { id: "voz", label: "Con la voz", hint: "Me hablás y te respondo en voz alta" },
@@ -28,16 +45,17 @@ const MODES = [
   { id: "botones", label: "Con botones", hint: "Tocás opciones listas" },
 ];
 
-const QUICK = ["Leé la página", "Agrandá el texto", "Alto contraste", "¿Qué temáticas hay?", "¿Qué podés hacer?"];
+const QUICK = ["Navegá la página", "Leé la página", "Agrandá el texto", "Alto contraste", "¿Qué podés hacer?"];
 
 const ABOUT =
   "EVA (Entornos Virtuales de Aprendizaje) es un programa donde estudiantes de San Martín idean y desarrollan " +
   "proyectos mientras aprenden herramientas digitales, con Aprendizaje Basado en Proyectos. " +
   "En este sitio podés ver lo que crearon en 10 temáticas.";
 const HELP =
-  "Puedo leerte la página en voz alta, agrandar el texto, activar alto contraste, poner una letra más fácil de leer, " +
-  "resaltar los enlaces, pausar las animaciones y llevarte a cualquier sección o temática. " +
-  "Por ejemplo: «llevame a robótica». Para cerrarme, decí «chau».";
+  "Puedo recorrer la página y contarte qué proyectos hay, abrir un trabajo y cerrarlo, leerte la página en voz alta, " +
+  "agrandar el texto, activar alto contraste, poner una letra más fácil de leer, resaltar los enlaces, " +
+  "pausar las animaciones y llevarte a cualquier temática. " +
+  "Por ejemplo: «navegá la página», «abrí el primero» o «llevame a robótica». Para cerrarme, decí «chau».";
 const UNKNOWN =
   "No te entendí. Probá con «leé la página», «agrandá el texto» o «llevame a videojuegos». " +
   "También podés usar los botones.";
@@ -118,7 +136,8 @@ function Assistant() {
   const returnFocus = useRef(null);
   const thinkTimer = useRef(0);
   const toastTimer = useRef(0);
-  const readQueue = useRef({ list: [], i: 0, node: null });
+  const readQueue = useRef({ list: [], i: 0, node: null, after: null });
+  const lastCard = useRef(null);
   const greeted = useRef(false);
 
   // Aplicar y recordar los ajustes
@@ -179,11 +198,12 @@ function Assistant() {
     if (voiceSession.current) startListening({ followUp: true });
   }
 
-  // Eva responde: siempre por escrito y, si está activado, también en voz alta
+  // Eva responde: siempre por escrito y, si está activado, también en voz alta.
+  // Si la llamaron hablando, contesta hablando.
   function say(text, after) {
     addMessage("eva", text);
     const next = after ?? followUp;
-    if (settingsRef.current.voice && canSpeak) speakOut(text, next);
+    if ((settingsRef.current.voice || voiceSession.current) && canSpeak) speakOut(text, next);
     else next();
   }
 
@@ -196,7 +216,7 @@ function Assistant() {
     speakId.current += 1;
     stopSpeaking();
     clearReadingMark();
-    readQueue.current = { list: [], i: 0, node: null };
+    readQueue.current = { list: [], i: 0, node: null, after: null };
     setSpeaking(false);
     setReading(false);
   }
@@ -207,16 +227,23 @@ function Assistant() {
     const queue = readQueue.current;
     clearReadingMark();
     if (queue.i >= queue.list.length) {
+      const after = queue.after;
+      queue.after = null;
       setReading(false);
       setSpeaking(false);
+      after?.();
       return;
     }
     const block = queue.list[queue.i];
     queue.i += 1;
+    if (block.log) addMessage("eva", block.text);
     if (block.node) {
       block.node.classList.add("eva-reading");
       block.node.scrollIntoView({ block: "center", behavior: reducedRef.current ? "auto" : "smooth" });
       queue.node = block.node;
+      // «abrí este» abre el último trabajo que se nombró
+      const card = block.node.closest?.(".project-card");
+      if (card) lastCard.current = card;
     }
     speakId.current += 1;
     const id = speakId.current;
@@ -240,9 +267,130 @@ function Assistant() {
       say("No encontré texto para leer en esta página.");
       return;
     }
-    readQueue.current = { list, i: 0, node: null };
-    setReading(true);
+    readQueue.current = { list, i: 0, node: null, after: null };
+    setReading("page");
     readNext();
+  }
+
+  // ---------- Recorrido: baja por la página y cuenta los proyectos ----------
+
+  async function startTour(slug) {
+    stopAll();
+    if (slug && slug !== currentThemeSlug()) {
+      navigate(`/tematicas/${slug}`);
+      await waitFor(() => currentThemeSlug() === slug && projectCards().length > 0, 2000);
+    }
+
+    let list;
+    let outro;
+    const cards = projectCards();
+    const here = currentThemeSlug();
+    if (cards.length) {
+      const name = THEMES[here]?.name || "esta temática";
+      const count = cards.length === 1 ? "un proyecto" : `${cards.length} proyectos`;
+      list = [
+        { text: `En ${name} hay ${count}. Te los cuento.`, log: true },
+        ...cards.map((card) => ({ node: card, text: describeCard(card) })),
+      ];
+      outro = "Eso es todo. Si querés ver alguno, decime «abrí» y el nombre, «abrí el primero» o «abrí este».";
+    } else if (here) {
+      say("En esta temática todavía no hay proyectos publicados.");
+      return;
+    } else {
+      // En el inicio: las temáticas y cuántos proyectos tiene cada una
+      if (!themeTiles().length) {
+        navigate("/#tematicas");
+        await waitFor(() => themeTiles().length > 0, 2000);
+      }
+      const tiles = themeTiles();
+      if (!tiles.length) {
+        say("En esta página no encontré proyectos para mostrarte.");
+        return;
+      }
+      list = [
+        { text: `Hay ${tiles.length} temáticas. Te cuento cuántos proyectos tiene cada una.`, log: true },
+        ...tiles.map((tile) => ({ node: tile.node, text: describeTile(tile) })),
+      ];
+      outro = "¿A cuál querés entrar? Decime, por ejemplo, «llevame a robótica» o «entrá a la primera».";
+    }
+    list.push({ text: outro, log: true });
+    readQueue.current = { list, i: 0, node: null, after: followUp };
+    setReading("tour");
+    readNext();
+  }
+
+  // ---------- Abrir, cerrar y pasar páginas de un trabajo ----------
+
+  async function openWork(intent) {
+    let card;
+    if (intent.project) {
+      card = findCardByName(intent.project.name);
+      if (!card) {
+        navigate(`/tematicas/${intent.project.theme}`);
+        card = await waitFor(() => findCardByName(intent.project.name), 2500);
+      }
+      if (!card) {
+        say(`No encontré «${intent.project.name}» en la página.`);
+        return;
+      }
+    } else if (intent.index) {
+      const cards = projectCards();
+      if (!cards.length) {
+        // En el inicio, «entrá a la tercera» lleva a esa temática
+        const tile = pickByPosition(themeTiles(), intent.index);
+        if (tile) {
+          navigate(tile.to);
+          say(`Te llevo a ${tile.name}.`);
+        } else {
+          say("Acá no hay trabajos. Entrá a una temática, por ejemplo: «llevame a robótica».");
+        }
+        return;
+      }
+      card = pickByPosition(cards, intent.index);
+      if (!card) {
+        say(`En esta página hay ${cards.length === 1 ? "un trabajo" : `${cards.length} trabajos`}.`);
+        return;
+      }
+    } else {
+      card = lastCard.current?.isConnected ? lastCard.current : null;
+      if (!card) {
+        say("¿Cuál querés que abra? Decime el nombre del trabajo, o «el primero».");
+        return;
+      }
+    }
+
+    lastCard.current = card;
+    card.scrollIntoView({ block: "center", behavior: reducedRef.current ? "auto" : "smooth" });
+    const name = cardName(card);
+    const result = openCard(card);
+    if (result === "viewer") say(`Te abro «${name}». Para cerrarlo, decí «cerrá» o tocá la X.`);
+    else if (result === "web") say(`«${name}» es una página web: te la abrí en otra pestaña.`);
+    else if (result === "blocked") {
+      say(
+        `«${name}» es una página web y el navegador no me dejó abrir otra pestaña. ` +
+          "Te marqué el botón «Visitar la web»: tocalo o apretá Enter.",
+      );
+    } else say(`No pude abrir «${name}».`);
+  }
+
+  function closeWork(plain) {
+    if (closeOpenViewer()) {
+      say("Listo, lo cerré.");
+      return;
+    }
+    if (plain) {
+      say("¡Chau! Llamame cuando quieras.", () => closePanel());
+      return;
+    }
+    say("No hay ningún trabajo abierto.");
+  }
+
+  function turnWorkPage(dir) {
+    const { result, dialog } = turnViewerPage(dir);
+    if (result === "none") say("No hay ningún trabajo abierto.");
+    else if (result === "single") say("Este trabajo tiene una sola página.");
+    else if (result === "edge") say(dir > 0 ? "Ya estás en la última página." : "Ya estás en la primera página.");
+    else window.setTimeout(() => say(viewerPageLabel(dialog) || "Listo."), 80);
   }
 
   // ---------- Escuchar un pedido ----------
@@ -295,8 +443,13 @@ function Assistant() {
             );
             return;
           }
-          // Llamada por voz y no dijo nada más: se va, como Hey Google
           if (isFollowUp && voiceSession.current) {
+            // Con un trabajo abierto sigue escuchando, para poder cerrarlo o pasar de página
+            if (openViewer() && (!error || error === "no-speech")) {
+              startListening({ followUp: true });
+              return;
+            }
+            // Llamada por voz y no dijo nada más: se va, como Hey Google
             closePanel();
             return;
           }
@@ -343,6 +496,22 @@ function Assistant() {
         break;
       case "close":
         say("¡Chau! Llamame cuando quieras.", () => closePanel());
+        break;
+      case "closeWork":
+        closeWork(intent.plain);
+        break;
+      case "page":
+        turnWorkPage(intent.dir);
+        break;
+      case "open":
+        openWork(intent);
+        break;
+      case "tour":
+        if (!canSpeak) {
+          say("Tu navegador no tiene voz para contarte los proyectos.");
+          break;
+        }
+        startTour(intent.theme);
         break;
       case "read": {
         if (!canSpeak) {
@@ -500,7 +669,9 @@ function Assistant() {
 
   // ---------- Escuchar la frase de fondo ----------
 
-  const wakeActive = wakeEnabled && canListen && visible && !listening && !speaking && !thinking && !reading;
+  // También escucha mientras lee o recorre, para que «Eva, ¿estás ahí?» la pueda interrumpir
+  const wakeActive =
+    wakeEnabled && canListen && visible && !listening && !thinking && (!speaking || Boolean(reading));
 
   const onWake = useEffectEvent(() => summon());
   const onWakeReady = useEffectEvent(() => {
@@ -564,6 +735,8 @@ function Assistant() {
       return;
     }
     if (e.key === "Escape") {
+      // Con un trabajo abierto, Escape cierra el trabajo (lo hace el propio sitio)
+      if (openViewer()) return;
       if (open) closePanel();
       else if (reading || speaking) stopAll();
     }
@@ -591,6 +764,7 @@ function Assistant() {
   let status = "Lista para ayudarte";
   if (listening) status = "Te escucho…";
   else if (thinking) status = "Pensando…";
+  else if (reading === "tour") status = "Recorriendo la página…";
   else if (reading) status = "Leyendo la página…";
   else if (speaking) status = "Hablando…";
 
@@ -608,7 +782,13 @@ function Assistant() {
       )}
 
       {open && (
-        <div className="eva-panel" id="eva-panel" role="dialog" aria-labelledby="eva-title" ref={panelRef}>
+        <div
+          className={`eva-panel${reading ? " is-compact" : ""}`}
+          id="eva-panel"
+          role="dialog"
+          aria-labelledby="eva-title"
+          ref={panelRef}
+        >
           {listening && <div className="eva-listen-bar" aria-hidden="true" />}
           <div className="eva-head">
             <EvaCharacter state={charState} talking={speaking} reduced={reduced} dots className="eva-head-char" />
@@ -617,6 +797,11 @@ function Assistant() {
                 Eva
               </h2>
               <p className="eva-status">{status}</p>
+              {reading && (
+                <button type="button" className="eva-chip eva-chip-stop eva-compact-stop" onClick={stopAll}>
+                  Detener
+                </button>
+              )}
             </div>
             <button type="button" className="eva-icon-btn" onClick={closePanel} aria-label="Cerrar asistente">
               <CloseIcon />
@@ -632,7 +817,7 @@ function Assistant() {
             </button>
           </div>
 
-          {view === "chat" ? (
+          {reading ? null : view === "chat" ? (
             <>
               <div className="eva-log" ref={logRef}>
                 <div className="eva-messages" role="log" aria-live="polite">

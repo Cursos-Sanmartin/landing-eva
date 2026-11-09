@@ -2,15 +2,15 @@
 // No usa inteligencia artificial: busca palabras clave en español.
 // Para sumar frases nuevas, agregalas en las listas de abajo.
 
-import { THEMES } from "../../data/projects";
+import { PROJECTS, THEMES } from "../../data/projects";
 
+// Minúsculas, sin acentos y sin signos: «¿Abrí "Pixel-Quest"?» → «abri pixel quest»
 export function normalize(text) {
   return text
     .toLowerCase()
     .normalize("NFD")
     .replace(/[̀-ͯ]/g, "")
-    .replace(/[¿?¡!.,;:"'«»()]/g, " ")
-    .replace(/\s+/g, " ")
+    .replace(/[^a-z0-9]+/g, " ")
     .trim();
 }
 
@@ -41,7 +41,63 @@ const SECTIONS = [
 
 export const THEME_NAMES = Object.values(THEMES).map((t) => t.name);
 
-// Frase para llamar a Eva cuando está escondida. También vale «asistente, ¿estás ahí?»
+function findTheme(t) {
+  for (const [slug, words] of Object.entries(THEME_WORDS)) {
+    if (THEMES[slug] && hasAny(t, words)) return slug;
+  }
+  return null;
+}
+
+// ---------- Trabajos por nombre ----------
+
+const SKIP_WORDS = new Set(["del", "las", "los", "para", "con", "una", "uno", "por", "que", "the", "and", "mas"]);
+const keyWords = (name) =>
+  normalize(name)
+    .split(" ")
+    .filter((w) => w.length >= 3 && !SKIP_WORDS.has(w));
+const PROJECT_INDEX = PROJECTS.map((project) => ({
+  project,
+  full: normalize(project.name),
+  words: keyWords(project.name),
+}));
+
+// El trabajo cuyo nombre aparece en lo que dijo (completo o al menos la mitad de sus palabras)
+function findProject(t) {
+  const said = new Set(t.split(" "));
+  let best = null;
+  let bestScore = 0;
+  for (const item of PROJECT_INDEX) {
+    if (item.full && has(t, item.full)) return item.project;
+    if (!item.words.length) continue;
+    const hits = item.words.filter((w) => said.has(w)).length;
+    const score = hits / item.words.length;
+    if (hits && score >= 0.5 && (score > bestScore || (score === bestScore && item.words.length > best.words.length))) {
+      best = item;
+      bestScore = score;
+    }
+  }
+  return best ? best.project : null;
+}
+
+const ORDINALS = {
+  primero: 1, primera: 1, segundo: 2, segunda: 2, tercero: 3, tercera: 3, cuarto: 4, cuarta: 4,
+  quinto: 5, quinta: 5, sexto: 6, sexta: 6, septimo: 7, septima: 7, octavo: 8, octava: 8,
+  noveno: 9, novena: 9, decimo: 10, decima: 10, ultimo: -1, ultima: -1,
+};
+
+// «el tercero», «la última», «el número 4» → posición (−1 = la última)
+function findOrdinal(t) {
+  for (const [word, n] of Object.entries(ORDINALS)) if (has(t, word)) return n;
+  const match = t.match(/(^| )(numero |el |la )(\d{1,2})( |$)/);
+  return match ? Number(match[3]) : null;
+}
+
+const OPEN_WORDS = ["abri", "abrime", "abrilo", "abrila", "abrir", "abre", "mostrame", "quiero ver", "ver", "entra a", "entra en", "entrar a"];
+const THIS_WORDS = ["este", "esta", "ese", "esa", "abrilo", "abrila"];
+
+// ---------- Frase para llamar a Eva ----------
+
+// También vale «asistente, ¿estás ahí?»
 export const WAKE_PHRASE = "Eva, ¿estás ahí?";
 const WAKE_PATTERNS = [
   /(^| )(eva|asistente) (estas|esta) ahi( |$)/,
@@ -54,9 +110,13 @@ export function isWakePhrase(raw) {
   return WAKE_PATTERNS.some((pattern) => pattern.test(t));
 }
 
+// ---------- Interpretar un pedido ----------
+
 export function interpret(raw) {
   const t = normalize(raw);
   if (!t) return { type: "empty" };
+  // Si repite «Eva, ¿estás ahí?» cuando ya está abierta, solo saluda
+  if (WAKE_PATTERNS.some((pattern) => pattern.test(t))) return { type: "hello" };
   const turnOff = hasAny(t, ["saca", "sacale", "sacalo", "quita", "quitale", "desactiva", "apaga", "sin"]);
   const turnOn = hasAny(t, ["activa", "pone", "poneme", "prende", "usa", "quiero"]);
   // true / false si lo pidió explícito; null = cambiar al otro estado
@@ -69,8 +129,12 @@ export function interpret(raw) {
   ) {
     return { type: "stop" };
   }
-  if (/(^| )(chau|adios|cerrate|cerra|cerrar|anda nomas|nada mas|eso es todo|listo gracias)( |$)/.test(t)) {
+  if (/(^| )(chau|adios|cerrate|anda nomas|nada mas|eso es todo|listo gracias)( |$)/.test(t)) {
     return { type: "close" };
+  }
+  // «cerrá» cierra el trabajo abierto; si no hay ninguno, cierra a Eva
+  if (/(^| )(cerra|cerralo|cerrala|cerrar|sali|salir)( |$)/.test(t)) {
+    return { type: "closeWork", plain: !/(trabajo|imagen|video|visor|documento|proyecto|lo|la)( |$)/.test(t) };
   }
   if (/(no hables|sin voz|mudo|sin sonido|solo texto|solo por escrito)/.test(t)) {
     return { type: "toggle", key: "voice", value: false };
@@ -95,12 +159,33 @@ export function interpret(raw) {
     return { type: "toggle", key: "pause", value: !/(activa|volve|prende|reanuda)/.test(t) || turnOff };
   }
   if (/(restablec|reset|como estaba|volver todo|volve todo|deshace)/.test(t)) return { type: "reset" };
+
+  // Recorrido: baja por la página y cuenta los proyectos
+  if (
+    /(navega|navegame|recorre|recorrido|paseo|mostrame la pagina)/.test(t) ||
+    /(que|cuales son los|contame los|contame que|mostrame los) (proyectos|trabajos)/.test(t)
+  ) {
+    return { type: "tour", theme: findTheme(t) };
+  }
+
+  // Pasar de página dentro de un trabajo abierto
+  if (/(siguiente|proxima|pasa la pagina|pasa de pagina|adelante)/.test(t)) return { type: "page", dir: 1 };
+  if (/(anterior|volve una pagina|para atras|atras)/.test(t)) return { type: "page", dir: -1 };
+
+  // Abrir un trabajo: por nombre, por número o «este»
+  if (hasAny(t, OPEN_WORDS) || hasAny(t, ["este", "esta"])) {
+    const project = findProject(t);
+    if (project) return { type: "open", project };
+    const index = findOrdinal(t);
+    if (index) return { type: "open", index };
+    if (hasAny(t, THIS_WORDS) || /(^| )(el|un) (trabajo|proyecto)( |$)/.test(t)) return { type: "open", which: "this" };
+  }
+
   if (/(que tematicas|cuales son las tematicas|que cursos|que temas|lista de tematicas|que tematica hay)/.test(t)) {
     return { type: "themes" };
   }
-  for (const [slug, words] of Object.entries(THEME_WORDS)) {
-    if (THEMES[slug] && hasAny(t, words)) return { type: "go", to: `/tematicas/${slug}`, label: `a ${THEMES[slug].name}` };
-  }
+  const theme = findTheme(t);
+  if (theme) return { type: "go", to: `/tematicas/${theme}`, label: `a ${THEMES[theme].name}` };
   const section = SECTIONS.find((s) => hasAny(t, s.words));
   if (section) return { type: "go", to: section.to, label: section.label };
   if (/(que es eva|de que se trata|que es esto|que es esta pagina|contame|que hacen|hablame de eva)/.test(t)) {
