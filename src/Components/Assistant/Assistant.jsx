@@ -1,7 +1,16 @@
 import { useEffect, useEffectEvent, useRef, useState, useSyncExternalStore } from "react";
 import { useNavigate } from "react-router";
 import EvaCharacter from "./EvaCharacter";
-import { canListen, canSpeak, listen, listenForWakeWord, playChime, speak, stopSpeaking } from "./speech";
+import {
+  canListen,
+  canSpeak,
+  listenForWakeWord,
+  playChime,
+  speak,
+  speechState,
+  spokenAround,
+  stopSpeaking,
+} from "./speech";
 import {
   DEFAULTS,
   SCALE_MAX,
@@ -12,7 +21,19 @@ import {
   readableBlocks,
   saveSettings,
 } from "./accessibility";
-import { THEME_NAMES, WAKE_PHRASE, interpret, isTalkingOver, isWakePhrase, normalize, userPart } from "./commands";
+import {
+  THEME_NAMES,
+  WAKE_PHRASE,
+  freshTest,
+  interpret,
+  isAttention,
+  isResume,
+  isWakePhrase,
+  lateEchoTest,
+  normalize,
+  withoutCall,
+  withoutEcho,
+} from "./commands";
 import { onOpenRequest, onWakeToggledByUser, setWakeEnabled, setWakeLive, useWakeEnabled } from "./assistantStore";
 import {
   cardName,
@@ -36,8 +57,13 @@ import "./Assistant.css";
 // Asistente de accesibilidad de EVA (prueba).
 // No se ve hasta que lo llaman: diciendo «Eva, ¿estás ahí?» (si la persona activó
 // «Eva por voz» en el header), con Alt + A, o desde «Accesibilidad» en el pie de página.
+// Aparece abajo a la derecha y habla con globitos, como un chat.
 // Entiende voz, texto y botones, lee la página en voz alta, recorre los proyectos contándolos,
 // abre y cierra trabajos, y cambia el tamaño del texto, el contraste y más.
+//
+// Con la voz, el micrófono queda prendido todo el tiempo que Eva está abierta (no se apaga y
+// se prende entre pedido y pedido). Si la persona habla mientras Eva habla, Eva se calla en el
+// acto, escucha la frase completa y hace lo que le pidieron.
 
 const MODES = [
   { id: "voz", label: "Con la voz", hint: "Me hablás y te respondo en voz alta" },
@@ -56,9 +82,8 @@ const HELP =
   "agrandar el texto, activar alto contraste, poner una letra más fácil de leer, resaltar los enlaces, " +
   "pausar las animaciones y llevarte a cualquier temática. " +
   "Por ejemplo: «navegá la página», «abrí el primero» o «llevame a robótica». Para cerrarme, decí «chau».";
-const UNKNOWN =
-  "No te entendí. Probá con «leé la página», «agrandá el texto» o «llevame a videojuegos». " +
-  "También podés usar los botones.";
+const SORRY_VOICE = "Perdón, ¿podrías repetirme? No entendí tu pedido.";
+const SORRY_TEXT = "Perdón, no entendí tu pedido. ¿Me lo escribís de otra forma?";
 
 const TOGGLE_REPLIES = {
   contrast: ["Activé el alto contraste.", "Saqué el alto contraste."],
@@ -75,6 +100,17 @@ const WAKE_ERRORS = {
     "El navegador no dio permiso al micrófono. Podés habilitarlo desde el candado de la barra de direcciones.",
   "audio-capture": "No encontré un micrófono conectado.",
 };
+
+// Tiempos de la charla (en milisegundos)
+const GAP_TOUR = 1200; // pausa entre proyecto y proyecto, para que la persona pueda hablar
+const GAP_PAGE = 700; // pausa entre párrafos al leer la página
+const ECHO_TAIL = 250; // lo que llega apenas se calla todavía es su voz
+const ECHO_GRACE = 1200; // hasta acá pueden llegar sus últimas palabras (Chrome tarda en escribirlas)
+const HOLD_QUIET = 1500; // sin palabras nuevas por este tiempo: la persona terminó de hablar
+const HOLD_SETTLE = 600; // frase cerrada pero incompleta: un ratito por si sigue
+const HOLD_MAX = 8000; // como mucho escucha una frase este tiempo
+const REPLY_WAIT = 9000; // llamada por voz: si no le dicen nada más, se va (como Hey Google)
+const PAUSE_WAIT = 8000; // recorrido en pausa: si no le piden nada, sigue
 
 function greeting(mode) {
   if (!mode) {
@@ -103,6 +139,12 @@ const getVisible = () => document.visibilityState !== "hidden";
 
 const clampScale = (v) => Math.min(SCALE_MAX, Math.max(SCALE_MIN, v));
 
+// ¿Con esto ya se puede hacer algo, o conviene esperar a que termine la frase?
+function isActionable(text) {
+  const type = interpret(text).type;
+  return (type !== "unknown" && type !== "empty") || isResume(normalize(text));
+}
+
 function Assistant() {
   const navigate = useNavigate();
   const [settings, setSettings] = useState(loadSettings);
@@ -110,14 +152,14 @@ function Assistant() {
   const [view, setView] = useState("chat");
   const [messages, setMessages] = useState(() => [{ id: 1, from: "eva", text: greeting(settings.mode) }]);
   const [input, setInput] = useState("");
-  const [listening, setListening] = useState(false);
+  const [micOn, setMicOn] = useState(false);
   const [speaking, setSpeaking] = useState(false);
   const [thinking, setThinking] = useState(false);
   const [reading, setReading] = useState(false);
+  const [caption, setCaption] = useState("");
+  const [draft, setDraft] = useState("");
   const [toast, setToast] = useState("");
   const [usedVoice, setUsedVoice] = useState(false);
-  const [heard, setHeard] = useState("");
-  const [inGap, setInGap] = useState(false);
   const systemReduced = useSyncExternalStore(subscribeMotion, getMotion, () => false);
   const visible = useSyncExternalStore(subscribeVisibility, getVisible, () => true);
   const wakeEnabled = useWakeEnabled();
@@ -130,19 +172,18 @@ function Assistant() {
   const reducedRef = useRef(reduced);
   const msgId = useRef(1);
   const speakId = useRef(0);
-  const stopListen = useRef(null);
-  const listenToken = useRef(0);
-  const listenDelay = useRef(0);
-  const wakeStop = useRef(null);
   const announceWake = useRef(false);
   const voiceSession = useRef(false);
+  const lastByVoice = useRef(false);
   const returnFocus = useRef(null);
   const thinkTimer = useRef(0);
   const toastTimer = useRef(0);
+  const waitTimer = useRef(0);
   const readQueue = useRef({ list: [], i: 0, node: null, after: null });
   const lastCard = useRef(null);
-  const recentSpeech = useRef([]);
-  const holdTimer = useRef(0);
+  const hold = useRef(null);
+  const segs = useRef(new Map());
+  const misses = useRef(0);
   const greeted = useRef(false);
 
   // Aplicar y recordar los ajustes
@@ -160,14 +201,14 @@ function Assistant() {
   useEffect(() => {
     if (!open) return;
     const target = panelRef.current?.querySelector("[data-autofocus]") || inputRef.current;
-    target?.focus();
-  }, [open]);
+    target?.focus({ preventScroll: true });
+  }, [open, view]);
 
-  // El último mensaje siempre a la vista
+  // El último globito siempre a la vista
   useEffect(() => {
     const log = logRef.current;
     if (log) log.scrollTop = log.scrollHeight;
-  }, [messages, open, view]);
+  }, [messages, caption, draft, open, view]);
 
   // ---------- Avisos cortos ----------
 
@@ -182,7 +223,7 @@ function Assistant() {
   function addMessage(from, text) {
     msgId.current += 1;
     const id = msgId.current;
-    setMessages((list) => [...list, { id, from, text }]);
+    setMessages((list) => [...list.slice(-40), { id, from, text }]);
   }
 
   function speakOut(text, after) {
@@ -198,13 +239,20 @@ function Assistant() {
     });
   }
 
-  // Si la llamaron con la voz, después de responder vuelve a escuchar (como Hey Google)
-  function followUp() {
-    if (voiceSession.current) startListening({ followUp: true });
+  // Eva se calla (sin terminar la lectura)
+  function hush() {
+    speakId.current += 1;
+    stopSpeaking();
+    setSpeaking(false);
   }
 
-  // Eva responde: siempre por escrito y, si está activado, también en voz alta.
-  // Si la llamaron hablando, contesta hablando.
+  // Si la llamaron con la voz, después de responder espera otro pedido (como Hey Google)
+  function followUp() {
+    if (voiceSession.current) waitForReply();
+  }
+
+  // Eva responde: siempre en un globito y, si está activado, también en voz alta.
+  // Si le hablaron, contesta hablando.
   function say(text, after) {
     addMessage("eva", text);
     const next = after ?? followUp;
@@ -218,13 +266,41 @@ function Assistant() {
   }
 
   function stopAll() {
-    speakId.current += 1;
-    stopSpeaking();
+    hush();
+    dropHold();
+    window.clearTimeout(waitTimer.current);
     clearReadingMark();
     readQueue.current = { list: [], i: 0, node: null, after: null };
-    setSpeaking(false);
     setReading(false);
-    setInGap(false);
+    setCaption("");
+  }
+
+  // ---------- Esperar el próximo pedido ----------
+
+  // Llamada por voz: si no le dicen nada más, se va sola
+  function waitForReply() {
+    window.clearTimeout(waitTimer.current);
+    if (!voiceSession.current) return;
+    waitTimer.current = window.setTimeout(() => {
+      if (hold.current || readQueue.current.list.length || !voiceSession.current) return;
+      // Con un trabajo abierto se queda, para poder cerrarlo o pasar de página
+      if (openViewer()) {
+        waitForReply();
+        return;
+      }
+      closePanel();
+    }, REPLY_WAIT);
+  }
+
+  // Recorrido en pausa: espera el pedido y, si no llega, sigue
+  function waitInPause() {
+    if (!readQueue.current.paused) return;
+    setReading("paused");
+    window.clearTimeout(waitTimer.current);
+    waitTimer.current = window.setTimeout(() => {
+      if (hold.current || !readQueue.current.paused) return;
+      say("Sigo.", () => resumeReading(0));
+    }, PAUSE_WAIT);
   }
 
   // ---------- Leer la página ----------
@@ -236,9 +312,9 @@ function Assistant() {
       const after = queue.after;
       queue.after = null;
       queue.inGap = false;
-      setInGap(false);
       setReading(false);
       setSpeaking(false);
+      setCaption("");
       after?.();
       return;
     }
@@ -247,14 +323,17 @@ function Assistant() {
     queue.i += 1;
     speakId.current += 1;
     const id = speakId.current;
-    setSpeaking(true);
 
     const go = () => {
       if (speakId.current !== id) return;
       queue.inGap = false;
-      setInGap(false);
       clearReadingMark();
-      if (block.log) addMessage("eva", block.text);
+      if (block.log) {
+        addMessage("eva", block.text);
+        setCaption("");
+      } else {
+        setCaption(block.text);
+      }
       if (block.node) {
         block.node.classList.add("eva-reading");
         block.node.scrollIntoView({ block: "center", behavior: reducedRef.current ? "auto" : "smooth" });
@@ -268,18 +347,18 @@ function Assistant() {
           lastCard.current = card;
         }
       }
-      rememberSpeech(block.text);
+      setSpeaking(true);
       speak(block.text, {
         onEnd: () => {
           if (speakId.current === id) readNext();
         },
       });
     };
-    // Entre proyecto y proyecto hace una pausa para escuchar: mientras Eva habla,
-    // la compu suele silenciar el micrófono para no oírla, así que se turnan
+    // Entre proyecto y proyecto hace una pausa: mientras Eva habla, muchas compus
+    // bajan el micrófono para no oírla, así que en la pausa se oye mejor a la persona
     if (queue.gap && !first && !queue.skipGap) {
       queue.inGap = true;
-      setInGap(true);
+      setSpeaking(false);
       window.setTimeout(go, queue.gap);
     } else {
       go();
@@ -287,16 +366,10 @@ function Assistant() {
     queue.skipGap = false;
   }
 
-  // Lo último que dijo Eva, para no confundir su propia voz con un pedido
-  function rememberSpeech(text) {
-    recentSpeech.current = [...recentSpeech.current.slice(-1), normalize(text)];
-  }
-
-  // ---------- Le hablan encima: frena, pide que repitan y escucha sin interferencias ----------
-
   // Deja la lectura en pausa. queue.cur es «este»: lo que estaba contando o lo que acaba de contar
-  function pauseAtCurrent(heardAt) {
+  function pauseAtCurrent(heardAt, byVoice) {
     const queue = readQueue.current;
+    if (!queue.list.length || queue.paused) return;
     queue.pausedInGap = Boolean(queue.inGap);
     queue.cur = Math.max(0, queue.i - (queue.inGap ? 2 : 1));
     // Si recién había empezado otro proyecto, seguramente reaccionó al anterior
@@ -311,54 +384,17 @@ function Assistant() {
     }
     queue.paused = true;
     queue.inGap = false;
-    setInGap(false);
-    speakId.current += 1;
-    stopSpeaking();
-    voiceSession.current = true;
-    setHeard("");
-  }
-
-  function askRepeat() {
+    hush();
+    if (byVoice) voiceSession.current = true;
     setReading("paused");
-    const ask = "¿Sí? Repetime, por favor.";
-    addMessage("eva", ask);
-    speakOut(ask, () => startListening({ pausedTour: true }));
-  }
-
-  // Le hablaron encima mientras Eva hablaba: frena y pide que repitan
-  function interruptReading(heardAt) {
-    pauseAtCurrent(heardAt);
-    askRepeat();
-  }
-
-  // Le hablaron en la pausa: se queda callada esperando a que terminen la frase
-  function holdReading(heardAt, key) {
-    pauseAtCurrent(heardAt);
-    const queue = readQueue.current;
-    queue.holdKey = key;
-    setReading("holding");
-    window.clearTimeout(holdTimer.current);
-    holdTimer.current = window.setTimeout(() => {
-      if (readQueue.current.holdKey !== key) return;
-      readQueue.current.holdKey = null;
-      wakeStop.current?.();
-      wakeStop.current = null;
-      askRepeat();
-    }, 4000);
-  }
-
-  function finishHold(said) {
-    window.clearTimeout(holdTimer.current);
-    readQueue.current.holdKey = null;
-    setReading("paused");
-    if (said) handlePausedCommand(said);
-    else resumeReading(0);
+    setCaption("");
   }
 
   // Retoma: «seguí» (0), el siguiente (1) o el anterior (−1)
   function resumeReading(dir) {
     const queue = readQueue.current;
     if (!queue.paused) return;
+    window.clearTimeout(waitTimer.current);
     queue.paused = false;
     const first = queue.kind === "tour" ? 1 : 0;
     if (dir > 0) queue.i = queue.cur + 1;
@@ -369,21 +405,34 @@ function Assistant() {
     readNext();
   }
 
-  // Lo que dijo después de «Repetime, por favor»
+  // Lo que le pidieron con la lectura en pausa
   function handlePausedCommand(raw) {
     const queue = readQueue.current;
+    const t = normalize(raw);
     addMessage("user", raw.trim());
-    if (/(^| )(segui|seguir|continua|continuar|dale|nada|perdon|disculpa|no nada)( |$)/.test(normalize(raw))) {
+    // «Pará un momento», «esperá»: solo quiere que espere
+    const intent = isAttention(t) ? { type: "hello" } : interpret(raw);
+    const known = intent.type !== "unknown" && intent.type !== "empty" && intent.type !== "hello";
+    if (!known && isResume(t)) {
+      misses.current = 0;
       resumeReading(0);
       return;
     }
-    const intent = interpret(raw);
-    // «Che», «escuchame», «esperá»: solo le pidió atención
-    const attention = /^((che|eva|asistente|escucha|escuchame|oye|ey|eh|espera|esperame|un momento|momento|hola) ?)+$/;
-    if (intent.type === "hello" || attention.test(normalize(raw))) {
-      say("¿Sí? Decime.", () => startListening({ pausedTour: true }));
+    if (!known && (intent.type === "hello" || isAttention(t))) {
+      say("¿Sí? Decime.", waitInPause);
       return;
     }
+    if (!known) {
+      misses.current += 1;
+      if (misses.current >= 3) {
+        misses.current = 0;
+        say("Perdón, no te entendí. Sigo.", () => resumeReading(0));
+        return;
+      }
+      say(lastByVoice.current ? SORRY_VOICE : SORRY_TEXT, waitInPause);
+      return;
+    }
+    misses.current = 0;
     if (intent.type === "page") {
       resumeReading(intent.dir);
       return;
@@ -392,12 +441,6 @@ function Assistant() {
       const card = queue.currentCard?.isConnected ? queue.currentCard : null;
       stopAll();
       openWork(card ? { card } : intent);
-      return;
-    }
-    if (intent.type === "unknown" || intent.type === "empty") {
-      say("No te entendí. Decime «seguí», «abrí este», «siguiente» o «basta».", () =>
-        startListening({ pausedTour: true }),
-      );
       return;
     }
     stopAll();
@@ -409,6 +452,13 @@ function Assistant() {
     return window.getSelection?.().toString().trim() || "";
   }
 
+  // Con la voz se puede interrumpir la lectura, salvo que la persona haya elegido escribir
+  function canTalk() {
+    return (
+      canListen && (settingsRef.current.mode !== "texto" || wakeEnabled || usedVoice || voiceSession.current)
+    );
+  }
+
   function startReading(useSelection) {
     stopAll();
     const picked = useSelection ? selectedText() : "";
@@ -417,7 +467,8 @@ function Assistant() {
       say("No encontré texto para leer en esta página.");
       return;
     }
-    readQueue.current = { list, i: 0, node: null, after: null, kind: "page", gap: 800 };
+    if (canTalk()) setMicOn(true);
+    readQueue.current = { list, i: 0, node: null, after: followUp, kind: "page", gap: GAP_PAGE };
     setReading("page");
     readNext();
   }
@@ -464,19 +515,14 @@ function Assistant() {
       outro = "¿A cuál querés entrar? Decime, por ejemplo, «llevame a robótica» o «entrá a la primera».";
     }
     list.push({ text: outro, log: true });
-    const canTalk =
-      canListen && (settingsRef.current.mode !== "texto" || wakeEnabled || usedVoice || voiceSession.current);
-    setHeard("");
-    const after = () => {
-      if (canTalk || voiceSession.current) startListening({ followUp: true });
-    };
+    if (canTalk()) setMicOn(true);
     readQueue.current = {
       list,
       i: 0,
       node: null,
-      after,
+      after: followUp,
       kind: "tour",
-      gap: 1600,
+      gap: GAP_TOUR,
       currentCard: null,
       prevCard: null,
       cardAt: 0,
@@ -561,84 +607,114 @@ function Assistant() {
     else window.setTimeout(() => say(viewerPageLabel(dialog) || "Listo."), 80);
   }
 
-  // ---------- Escuchar un pedido ----------
+  // ---------- Lo que oye el micrófono ----------
+  //
+  // Chrome va mandando lo que entiende de cada frase. Al principio de una frase puede estar la voz de
+  // Eva (el micrófono la oye por los parlantes): esas palabras se filtran. Apenas aparece una palabra
+  // de la persona, Eva se calla, junta la frase completa y recién ahí hace el pedido.
 
-  function stopListening() {
-    listenToken.current += 1;
-    window.clearTimeout(listenDelay.current);
-    const stop = stopListen.current;
-    stopListen.current = null;
-    stop?.();
-    setListening(false);
-  }
+  function onHeard(raw, isFinal, heardAt, key) {
+    const t = normalize(raw);
+    const words = t ? t.split(" ") : [];
+    let seg = segs.current.get(key);
+    if (!seg) {
+      seg = { checked: 0, from: -1, used: 0, count: 0 };
+      segs.current.set(key, seg);
+      if (segs.current.size > 60) segs.current.delete(segs.current.keys().next().value);
+    }
+    // Palabras nuevas de esta frase: ¿la primera de la persona?
+    if (seg.from < 0 && words.length > seg.checked) {
+      const { talking, quietAt } = speechState();
+      const since = heardAt - quietAt;
+      let isUser = () => true;
+      if (talking || since < ECHO_TAIL) {
+        isUser = freshTest(normalize(spokenAround(heardAt)));
+      } else if (!hold.current && since < ECHO_GRACE) {
+        const echo = lateEchoTest(normalize(spokenAround(quietAt, 1000, 0)));
+        isUser = (w) => !echo(w);
+      }
+      for (let i = seg.checked; i < words.length; i++) {
+        if (isUser(words[i])) {
+          seg.from = i;
+          break;
+        }
+      }
+      seg.checked = seg.from >= 0 ? seg.from : words.length;
+    }
+    seg.count = words.length;
+    const said = seg.from < 0 ? "" : withoutCall(words.slice(Math.max(seg.from, seg.used)).join(" "));
 
-  function startListening({ followUp: isFollowUp = false, pausedTour = false } = {}) {
-    if (!canListen) {
-      say("Tu navegador no permite dictar por voz. Probá con Chrome o Edge, o escribime acá abajo.");
+    let h = hold.current;
+    if (!h) {
+      if (!said) return;
+      h = beginHold(heardAt);
+    }
+    if (said || h.parts.has(key)) h.parts.set(key, said);
+    if (isFinal) h.finals.add(key);
+    else h.finals.delete(key);
+
+    const text = [...h.parts.values()].filter(Boolean).join(" ");
+    setDraft(clearText(text));
+    window.clearTimeout(h.quiet);
+    const closed = [...h.parts.keys()].every((k) => h.finals.has(k));
+    if (closed && text && isActionable(clearText(text))) {
+      finishHold();
       return;
     }
-    if (pausedTour) {
-      speakId.current += 1;
-      stopSpeaking();
-    } else {
-      stopAll();
+    h.quiet = window.setTimeout(() => finishHold(), closed ? HOLD_SETTLE : HOLD_QUIET);
+  }
+
+  // La persona empezó a hablar: Eva se calla en el acto y escucha
+  function beginHold(heardAt) {
+    window.clearTimeout(waitTimer.current);
+    const h = { parts: new Map(), finals: new Set(), quiet: 0, max: 0 };
+    hold.current = h;
+    voiceSession.current = true;
+    lastByVoice.current = true;
+    const queue = readQueue.current;
+    if (queue.list.length && !queue.paused) pauseAtCurrent(heardAt, true);
+    else hush();
+    if (readQueue.current.paused) setReading("holding");
+    h.max = window.setTimeout(() => finishHold(), HOLD_MAX);
+    return h;
+  }
+
+  function dropHold() {
+    const h = hold.current;
+    if (!h) return;
+    hold.current = null;
+    window.clearTimeout(h.quiet);
+    window.clearTimeout(h.max);
+    for (const key of h.parts.keys()) {
+      const seg = segs.current.get(key);
+      if (seg) seg.used = seg.count;
     }
-    stopListening();
-    // El micrófono no puede escuchar la frase y el pedido a la vez
-    const wasWaking = Boolean(wakeStop.current);
-    wakeStop.current?.();
-    wakeStop.current = null;
+    setDraft("");
+  }
 
-    listenToken.current += 1;
-    const token = listenToken.current;
-    setInput("");
-    setListening(true);
-    setUsedVoice(true);
+  // Si la frase no se entiende, prueba sin las palabras de Eva que se colaron
+  function clearText(text) {
+    if (!text || isActionable(text)) return text;
+    const eva = [normalize(spokenAround(speechState().quietAt, 4000, 1500))];
+    const clean = withoutEcho(text, eva);
+    if (clean && isActionable(clean)) return clean;
+    const bare = withoutEcho(text, eva, false);
+    return bare && isAttention(bare) ? bare : text;
+  }
 
-    const begin = () => {
-      if (listenToken.current !== token) return;
-      stopListen.current = listen({
-        onPartial: (text) => setInput(text),
-        onEnd: (text, error) => {
-          if (listenToken.current !== token) return;
-          stopListen.current = null;
-          setListening(false);
-          if (text) {
-            setInput("");
-            if (pausedTour && readQueue.current.paused) handlePausedCommand(text);
-            else handleText(text);
-            return;
-          }
-          if (error === "aborted") return;
-          if (error === "not-allowed" || error === "service-not-allowed") {
-            voiceSession.current = false;
-            say(
-              "No tengo permiso para usar el micrófono. Habilitalo desde el candado de la barra de direcciones, " +
-                "o escribime acá abajo.",
-            );
-            return;
-          }
-          // Frenó porque le hablaron y después no dijo nada (o fue un ruido): sigue
-          if (pausedTour && readQueue.current.paused) {
-            say("Sigo.", () => resumeReading(0));
-            return;
-          }
-          if (isFollowUp) {
-            // Con un trabajo abierto sigue escuchando, para poder cerrarlo o pasar de página
-            if (openViewer() && (!error || error === "no-speech")) {
-              startListening({ followUp: true });
-              return;
-            }
-            // Llamada por voz y no dijo nada más: se va, como Hey Google
-            if (voiceSession.current) closePanel();
-            return;
-          }
-          say("No te escuché. Tocá el micrófono y hablame cuando quieras.");
-        },
-      });
-    };
-    if (wasWaking) listenDelay.current = window.setTimeout(begin, 250);
-    else begin();
+  // Terminó de hablar: hace el pedido
+  function finishHold() {
+    const h = hold.current;
+    if (!h) return;
+    const text = clearText([...h.parts.values()].filter(Boolean).join(" ").trim());
+    dropHold();
+    if (readQueue.current.paused) {
+      setReading("paused");
+      if (text) handlePausedCommand(text);
+      else resumeReading(0);
+      return;
+    }
+    if (text) handleText(text);
   }
 
   // ---------- Entender y hacer ----------
@@ -659,7 +735,7 @@ function Assistant() {
         setThinking(false);
         runIntent(intent);
       },
-      reducedRef.current ? 120 : 550,
+      reducedRef.current ? 120 : 450,
     );
   }
 
@@ -673,6 +749,7 @@ function Assistant() {
       case "stop":
         stopAll();
         addMessage("eva", "Listo, freno.");
+        followUp();
         break;
       case "close":
         say("¡Chau! Llamame cuando quieras.", () => closePanel());
@@ -756,16 +833,37 @@ function Assistant() {
         say("¡De nada! Acá estoy si me necesitás.");
         break;
       case "empty":
+        followUp();
         break;
       default:
-        say(UNKNOWN);
+        say(lastByVoice.current ? SORRY_VOICE : SORRY_TEXT);
     }
   }
 
-  // Lo que la persona toca o escribe corta el ida y vuelta por voz
+  // Lo que la persona escribe o toca
   function handleTyped(text) {
+    if (!text.trim()) return;
     voiceSession.current = false;
+    lastByVoice.current = false;
+    window.clearTimeout(waitTimer.current);
+    if (readQueue.current.list.length) {
+      pauseAtCurrent(Number.POSITIVE_INFINITY, false);
+      handlePausedCommand(text);
+      return;
+    }
     handleText(text);
+  }
+
+  function toggleMic() {
+    if (micOn) {
+      setMicOn(false);
+      voiceSession.current = false;
+      dropHold();
+      return;
+    }
+    setUsedVoice(true);
+    setMicOn(true);
+    if (!readQueue.current.list.length) hush();
   }
 
   function chooseMode(mode) {
@@ -779,14 +877,12 @@ function Assistant() {
     if (mode === "texto") reply = "Perfecto. Escribime acá abajo qué necesitás.";
     if (mode === "voz") {
       reply = canListen
-        ? "Dale. Cuando se prenda el micrófono, decime qué necesitás. También podés escribir."
+        ? "Dale. Te escucho: decime qué necesitás cuando quieras. También podés escribir."
         : "Tu navegador no permite dictar por voz, pero te respondo en voz alta. Escribime o usá los botones.";
+      if (canListen) setMicOn(true);
     }
     addMessage("eva", reply);
-
-    const thenListen = mode === "voz" && canListen ? () => startListening() : undefined;
-    if (voice && canSpeak) speakOut(reply, thenListen);
-    else thenListen?.();
+    if (voice && canSpeak) speakOut(reply);
     if (mode === "texto") inputRef.current?.focus();
   }
 
@@ -802,13 +898,12 @@ function Assistant() {
     returnFocus.current = document.activeElement;
     setToast("");
     setOpen(true);
+    const s = settingsRef.current;
+    if (s.mode === "voz" && canListen) setMicOn(true);
     if (greeted.current) return;
     greeted.current = true;
-    const s = settingsRef.current;
-    const thenListen = s.mode === "voz" && canListen ? () => startListening() : undefined;
     // Si todavía no eligió cómo comunicarse, no habla sola: primero pregunta
-    if (s.mode && s.voice && canSpeak && !reading) speakOut(greeting(s.mode), thenListen);
-    else thenListen?.();
+    if (s.mode && s.voice && canSpeak && !reading) speakOut(greeting(s.mode));
   }
 
   // La llamaron diciendo «Eva, ¿estás ahí?»
@@ -816,6 +911,7 @@ function Assistant() {
     playChime();
     setToast("");
     voiceSession.current = true;
+    lastByVoice.current = true;
     // Primera vez que aparece: arranca directo, sin el saludo de bienvenida
     if (!greeted.current) setMessages([]);
     greeted.current = true;
@@ -825,19 +921,21 @@ function Assistant() {
       setOpen(true);
       setView("chat");
     }
+    setMicOn(true);
     addMessage("eva", "¡Acá estoy! Decime qué necesitás.");
-    startListening({ followUp: true });
+    waitForReply();
   }
 
   function closePanel() {
+    stopAll();
     setOpen(false);
-    stopListening();
+    setMicOn(false);
     voiceSession.current = false;
     window.clearTimeout(thinkTimer.current);
     setThinking(false);
     const back = returnFocus.current;
     returnFocus.current = null;
-    if (back && back.isConnected && back !== document.body) back.focus?.();
+    if (back && back.isConnected && back !== document.body) back.focus?.({ preventScroll: true });
   }
 
   function onSubmit(e) {
@@ -847,18 +945,14 @@ function Assistant() {
     handleTyped(text);
   }
 
-  // ---------- Escuchar la frase de fondo ----------
+  // ---------- Micrófono de fondo ----------
 
-  // Qué escucha el micrófono de fondo:
-  // "wake": solo la frase para llamarla (con «Eva por voz» prendido).
-  // "barge": mientras lee o recorre, pedidos como «abrí este», «siguiente» o «basta».
+  // "talk": Eva está abierta (o leyendo) y la persona usa la voz: escucha todo, sin cortar.
+  // "wake": solo la frase para llamarla (con «Eva por voz» prendido en el header).
   let micMode = null;
-  if (canListen && visible && !listening && !thinking) {
-    // Mientras lee o recorre escucha, salvo que la persona haya elegido comunicarse escribiendo
-    if (reading === "tour" || reading === "page" || reading === "holding") {
-      micMode = settings.mode !== "texto" || wakeEnabled || usedVoice ? "barge" : null;
-    }
-    else if (wakeEnabled && !speaking) micMode = "wake";
+  if (canListen && visible) {
+    if (micOn && (open || reading)) micMode = "talk";
+    else if (wakeEnabled) micMode = "wake";
   }
 
   const onWake = useEffectEvent(() => summon());
@@ -874,30 +968,18 @@ function Assistant() {
     setWakeEnabled(false);
     showToast(WAKE_ERRORS[error] || WAKE_ERRORS["not-allowed"]);
   });
-
-  // Pedidos durante el recorrido o la lectura. Devuelve true si hay que cortar la escucha.
-  // Mientras lee o recorre. Devuelve true para cortar la escucha de fondo.
-  const onBarge = useEffectEvent((raw, isFinal, heardAt, key) => {
-    const t = normalize(raw);
-    if (t) setHeard(t.split(" ").slice(-10).join(" "));
-    const queue = readQueue.current;
-    if (!queue.holdKey) {
-      if (!isWakePhrase(raw) && !isTalkingOver(t, recentSpeech.current)) return false;
-      // Le habló encima mientras ella hablaba: frena y pide que repita
-      if (!queue.inGap) {
-        interruptReading(heardAt);
-        return true;
-      }
-      // Le habló en la pausa: espera a que termine la frase y lo hace
-      holdReading(heardAt, key);
-    }
-    if (!isFinal) return false;
-    const said = userPart(t, recentSpeech.current);
-    if (!said && key !== queue.holdKey) return false;
-    finishHold(said);
-    // Si retomó la lectura, la escucha de fondo sigue; si no, se corta
-    const resumed = readQueue.current.list.length > 0 && !readQueue.current.paused;
-    return !resumed;
+  const onTalk = useEffectEvent((raw, isFinal, heardAt, key) => onHeard(raw, isFinal, heardAt, key));
+  const onTalkFatal = useEffectEvent((error) => {
+    setMicOn(false);
+    voiceSession.current = false;
+    lastByVoice.current = false;
+    dropHold();
+    say(
+      error === "audio-capture"
+        ? "No encontré un micrófono conectado. Podés escribirme acá abajo."
+        : "No tengo permiso para usar el micrófono. Habilitalo desde el candado de la barra de direcciones, " +
+            "o escribime acá abajo.",
+    );
   });
 
   useEffect(() => {
@@ -911,14 +993,15 @@ function Assistant() {
             onFatal: (error) => onWakeFatal(error),
           })
         : listenForWakeWord({
-            match: (text, isFinal, heardAt, key) => onBarge(text, isFinal, heardAt, key),
+            match: (text, isFinal, heardAt, key) => {
+              onTalk(text, isFinal, heardAt, key);
+              return false;
+            },
             onReady: () => setWakeLive(true),
-            onFatal: (error) => showToast(WAKE_ERRORS[error] || WAKE_ERRORS["not-allowed"]),
+            onFatal: (error) => onTalkFatal(error),
           });
-    wakeStop.current = stop;
     return () => {
       stop();
-      if (wakeStop.current === stop) wakeStop.current = null;
       setWakeLive(false);
     };
   }, [micMode]);
@@ -964,11 +1047,10 @@ function Assistant() {
 
   const onUnmount = useEffectEvent(() => {
     stopSpeaking();
-    stopListen.current?.();
+    dropHold();
     window.clearTimeout(thinkTimer.current);
     window.clearTimeout(toastTimer.current);
-    window.clearTimeout(listenDelay.current);
-    window.clearTimeout(holdTimer.current);
+    window.clearTimeout(waitTimer.current);
     clearReadingMark();
   });
 
@@ -981,15 +1063,22 @@ function Assistant() {
     };
   }, []);
 
-  const charState = listening ? "listening" : thinking ? "thinking" : speaking ? "speaking" : "idle";
+  // ---------- Lo que se ve ----------
+
+  const micLive = micMode === "talk";
+  const hearing = Boolean(draft);
+  const listeningNow = micLive && (hearing || (!speaking && !thinking));
+  const charState = listeningNow ? "listening" : thinking ? "thinking" : speaking ? "speaking" : "idle";
   let status = "Lista para ayudarte";
-  if (listening) status = "Te escucho…";
+  if (listeningNow) status = "Te escucho…";
   else if (thinking) status = "Pensando…";
-  else if (reading === "holding" || (reading === "tour" && inGap)) status = "Te escucho…";
   else if (reading === "tour") status = "Recorriendo la página…";
-  else if (reading === "paused") status = "Esperando tu pedido…";
-  else if (reading) status = "Leyendo la página…";
+  else if (reading === "page") status = "Leyendo la página…";
+  else if (reading) status = "Esperando tu pedido…";
   else if (speaking) status = "Hablando…";
+
+  const showChips =
+    view === "chat" && !reading && settings.mode && (settings.mode === "botones" || messages.length <= 2);
 
   return (
     <div className="eva-assistant">
@@ -997,138 +1086,148 @@ function Assistant() {
         {toast}
       </div>
 
-      {reading && !open && (
-        <button type="button" className="eva-stop-float" onClick={stopAll}>
-          <StopIcon />
-          Detener lectura
-        </button>
-      )}
-
       {open && (
         <div
-          className={`eva-panel${reading ? " is-compact" : ""}`}
+          className={`eva-dock${reading ? " is-reading" : ""}`}
           id="eva-panel"
           role="dialog"
           aria-labelledby="eva-title"
           ref={panelRef}
         >
-          {(listening || reading === "holding" || (reading === "tour" && inGap)) && (
-            <div className="eva-listen-bar" aria-hidden="true" />
+          <h2 id="eva-title" className="eva-sr">
+            Eva, asistente de accesibilidad
+          </h2>
+
+          {view === "settings" ? (
+            <div className="eva-card">
+              <div className="eva-card-head">
+                <h3>Ajustes</h3>
+                <button type="button" className="eva-link-btn" onClick={() => setView("chat")} data-autofocus="">
+                  Volver a la charla
+                </button>
+              </div>
+              <SettingsView
+                settings={settings}
+                wakeEnabled={wakeEnabled}
+                onToggle={setSetting}
+                onScale={(dir) => setSettings((s) => ({ ...s, scale: clampScale(s.scale + dir * SCALE_STEP) }))}
+                onReset={() => setSettings((s) => ({ ...DEFAULTS, mode: s.mode, voice: s.voice }))}
+                onChangeMode={changeMode}
+              />
+            </div>
+          ) : (
+            <div className="eva-thread" ref={logRef}>
+              <div className="eva-messages" role="log" aria-live="polite" aria-label="Charla con Eva">
+                {messages.map((m) => (
+                  <p key={m.id} className={`eva-bubble from-${m.from}`}>
+                    <span className="eva-sr">{m.from === "user" ? "Vos: " : "Eva: "}</span>
+                    {m.text}
+                  </p>
+                ))}
+              </div>
+              {caption && (
+                <p className="eva-bubble from-eva is-caption">
+                  <span className="eva-sr">Eva está diciendo: </span>
+                  {caption}
+                </p>
+              )}
+              {draft && (
+                <p className="eva-bubble from-user is-draft" aria-hidden="true">
+                  {draft}…
+                </p>
+              )}
+              {!settings.mode && (
+                <div className="eva-modes">
+                  {MODES.map((m, i) => (
+                    <button
+                      key={m.id}
+                      type="button"
+                      className="eva-mode"
+                      onClick={() => chooseMode(m.id)}
+                      data-autofocus={i === 0 ? "" : undefined}
+                    >
+                      <b>{m.label}</b>
+                      <small>{m.hint}</small>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
           )}
-          <div className="eva-head">
-            <EvaCharacter state={charState} talking={speaking} reduced={reduced} dots className="eva-head-char" />
-            <div>
-              <h2 id="eva-title" className="eva-title">
-                Eva
-              </h2>
-              <p className="eva-status">{status}</p>
-              {reading && (
-                <button type="button" className="eva-chip eva-chip-stop eva-compact-stop" onClick={stopAll}>
+
+          {showChips && (
+            <div className="eva-chips" role="group" aria-label="Pedidos rápidos">
+              {QUICK.map((q) => (
+                <button key={q} type="button" className="eva-chip" onClick={() => handleTyped(q)}>
+                  {q}
+                </button>
+              ))}
+            </div>
+          )}
+
+          <div className="eva-stage">
+            <div className={`eva-pad${listeningNow ? " is-listening" : ""}`}>
+              <EvaCharacter state={charState} talking={speaking} reduced={reduced} dots />
+            </div>
+            <div className="eva-side">
+              <div className="eva-tools">
+                <button
+                  type="button"
+                  className="eva-round"
+                  aria-pressed={view === "settings"}
+                  onClick={() => setView((v) => (v === "settings" ? "chat" : "settings"))}
+                  aria-label="Ajustes de accesibilidad"
+                  title="Ajustes"
+                >
+                  <GearIcon />
+                </button>
+                <button
+                  type="button"
+                  className="eva-round"
+                  onClick={closePanel}
+                  aria-label="Cerrar asistente"
+                  title="Cerrar"
+                >
+                  <CloseIcon />
+                </button>
+              </div>
+              <p className={`eva-status${listeningNow ? " is-live" : ""}`}>{status}</p>
+              {(reading || speaking) && (
+                <button type="button" className="eva-stop" onClick={stopAll}>
+                  <StopIcon />
                   Detener
                 </button>
               )}
-              {micMode === "barge" && reading !== "holding" && (
-                <p className="eva-hint">Hablame cuando digo «Te escucho…», entre proyecto y proyecto.</p>
-              )}
-              {reading === "paused" && (
-                <p className="eva-hint">Decime «seguí», «abrí este», «siguiente», «anterior» o «basta».</p>
-              )}
-              {micMode === "barge" && heard && <p className="eva-heard">Escuché: «{heard}»</p>}
             </div>
-            <button type="button" className="eva-icon-btn" onClick={closePanel} aria-label="Cerrar asistente">
-              <CloseIcon />
-            </button>
           </div>
 
-          <div className="eva-tabs" role="group" aria-label="Secciones del asistente">
-            <button type="button" aria-pressed={view === "chat"} onClick={() => setView("chat")}>
-              Charla
-            </button>
-            <button type="button" aria-pressed={view === "settings"} onClick={() => setView("settings")}>
-              Ajustes
-            </button>
-          </div>
-
-          {reading ? null : view === "chat" ? (
-            <>
-              <div className="eva-log" ref={logRef}>
-                <div className="eva-messages" role="log" aria-live="polite">
-                  {messages.map((m) => (
-                    <p key={m.id} className={`eva-msg from-${m.from}`}>
-                      <span className="eva-sr">{m.from === "user" ? "Vos: " : "Eva: "}</span>
-                      {m.text}
-                    </p>
-                  ))}
-                </div>
-                {!settings.mode && (
-                  <div className="eva-modes">
-                    {MODES.map((m, i) => (
-                      <button
-                        key={m.id}
-                        type="button"
-                        className="eva-mode"
-                        onClick={() => chooseMode(m.id)}
-                        data-autofocus={i === 0 ? "" : undefined}
-                      >
-                        <b>{m.label}</b>
-                        <small>{m.hint}</small>
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
-
-              <div className="eva-chips">
-                {(reading || speaking) && (
-                  <button type="button" className="eva-chip eva-chip-stop" onClick={stopAll}>
-                    Detener
-                  </button>
-                )}
-                {QUICK.map((q) => (
-                  <button key={q} type="button" className="eva-chip" onClick={() => handleTyped(q)}>
-                    {q}
-                  </button>
-                ))}
-              </div>
-
-              <form className="eva-input" onSubmit={onSubmit}>
-                <label htmlFor="eva-text" className="eva-sr">
-                  Escribile a Eva
-                </label>
-                <input
-                  id="eva-text"
-                  ref={inputRef}
-                  value={input}
-                  onChange={(e) => setInput(e.target.value)}
-                  placeholder={listening ? "Te escucho…" : "Escribile a Eva…"}
-                  autoComplete="off"
-                />
-                <button
-                  type="button"
-                  className="eva-mic"
-                  aria-pressed={listening}
-                  onClick={() => (listening ? stopListening() : startListening())}
-                  aria-label={listening ? "Dejar de escuchar" : "Hablarle a Eva"}
-                  disabled={!canListen}
-                  title={canListen ? undefined : "Tu navegador no permite dictar por voz"}
-                >
-                  <MicIcon />
-                </button>
-                <button type="submit" className="eva-send" aria-label="Enviar">
-                  <SendIcon />
-                </button>
-              </form>
-            </>
-          ) : (
-            <SettingsView
-              settings={settings}
-              wakeEnabled={wakeEnabled}
-              onToggle={setSetting}
-              onScale={(dir) => setSettings((s) => ({ ...s, scale: clampScale(s.scale + dir * SCALE_STEP) }))}
-              onReset={() => setSettings((s) => ({ ...DEFAULTS, mode: s.mode, voice: s.voice }))}
-              onChangeMode={changeMode}
+          <form className="eva-input" onSubmit={onSubmit}>
+            <label htmlFor="eva-text" className="eva-sr">
+              Escribile a Eva
+            </label>
+            <input
+              id="eva-text"
+              ref={inputRef}
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              placeholder="Escribile a Eva…"
+              autoComplete="off"
             />
-          )}
+            <button
+              type="button"
+              className="eva-mic"
+              aria-pressed={micOn}
+              onClick={toggleMic}
+              aria-label={micOn ? "Apagar el micrófono" : "Hablarle a Eva"}
+              disabled={!canListen}
+              title={canListen ? undefined : "Tu navegador no permite dictar por voz"}
+            >
+              <MicIcon />
+            </button>
+            <button type="submit" className="eva-send" aria-label="Enviar">
+              <SendIcon />
+            </button>
+          </form>
         </div>
       )}
     </div>
@@ -1254,9 +1353,18 @@ function CloseIcon() {
   );
 }
 
+function GearIcon() {
+  return (
+    <svg {...iconProps}>
+      <circle cx="12" cy="12" r="3" />
+      <path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z" />
+    </svg>
+  );
+}
+
 function StopIcon() {
   return (
-    <svg {...iconProps} fill="currentColor" stroke="none">
+    <svg {...iconProps} width={16} height={16} fill="currentColor" stroke="none">
       <rect x="6" y="6" width="12" height="12" rx="2" />
     </svg>
   );

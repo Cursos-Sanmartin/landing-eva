@@ -134,182 +134,125 @@
   transform: none;
 }
 
-/* ---------- Panel ---------- */
-.eva-panel {
+/* ---------- Eva en pantalla: globitos de charla y el personaje ---------- */
+/* No hay panel: los globitos flotan sobre la página, con Eva abajo a la izquierda de la columna */
+.eva-dock {
   position: fixed;
   right: max(1rem, env(safe-area-inset-right, 0px));
   bottom: max(1rem, env(safe-area-inset-bottom, 0px));
   z-index: 1001;
-  width: min(25rem, calc(100vw - 2rem));
-  max-height: min(42rem, calc(100dvh - 2rem));
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-  border: 1px solid var(--line);
-  border-radius: 1.4rem;
-  background: #fff;
-  color: var(--navy-ink);
-  box-shadow: 0 30px 70px -24px rgba(10, 46, 94, 0.45);
-  text-align: left;
-  transform-origin: bottom right;
-  animation: eva-appear 0.34s cubic-bezier(0.2, 0.9, 0.3, 1.15) both;
-}
-
-/* Aparece desde abajo, como el asistente del celular */
-@keyframes eva-appear {
-  from {
-    opacity: 0;
-    transform: translateY(1.5rem) scale(0.94);
-  }
-}
-
-/* Barra de colores de la marca mientras escucha */
-.eva-listen-bar {
-  flex: none;
-  height: 0.3rem;
-  background: linear-gradient(90deg, var(--navy), var(--cyan), var(--sky), var(--cyan), var(--navy));
-  background-size: 200% 100%;
-  animation: eva-bar 1.4s linear infinite;
-}
-
-@keyframes eva-bar {
-  to {
-    background-position: -200% 0;
-  }
-}
-
-.eva-head {
-  display: grid;
-  grid-template-columns: auto 1fr auto;
-  align-items: center;
-  gap: 0.85rem;
-  padding: 1.1rem 0.85rem 0.75rem 1.1rem;
-  background: var(--bg-soft);
-  --eva-hole: var(--bg-soft);
-}
-
-.eva-head-char {
-  width: 6.5rem;
-  color: var(--navy);
-}
-
-.eva-title {
-  margin: 0;
-  font-size: 1.25rem;
-  font-weight: 800;
-  line-height: 1.2;
-  letter-spacing: -0.01em;
-  color: var(--navy);
-}
-
-.eva-status {
-  margin: 0.15rem 0 0;
-  font-size: 0.875rem;
-  font-weight: 600;
-  color: var(--muted);
-}
-
-.eva-icon-btn {
-  align-self: start;
-  width: 2.5rem;
-  height: 2.5rem;
-  display: grid;
-  place-items: center;
-  border: 0;
-  border-radius: 0.75rem;
-  background: transparent;
-  color: var(--navy);
-  cursor: pointer;
-}
-
-.eva-icon-btn:hover {
-  background: #fff;
-}
-
-.eva-tabs {
-  display: flex;
-  gap: 0.35rem;
-  padding: 0 1rem 0.75rem;
-  background: var(--bg-soft);
-  border-bottom: 1px solid var(--line);
-}
-
-.eva-tabs button {
-  flex: 1;
-  padding: 0.55rem 0.75rem;
-  border: 1.5px solid transparent;
-  border-radius: 0.75rem;
-  background: transparent;
-  color: var(--muted);
-  font: inherit;
-  font-size: 0.92rem;
-  font-weight: 700;
-  cursor: pointer;
-}
-
-.eva-tabs button[aria-pressed="true"] {
-  border-color: var(--line);
-  background: #fff;
-  color: var(--navy);
-}
-
-/* ---------- Charla ---------- */
-.eva-log {
-  flex: 1;
-  min-height: 9rem;
-  overflow-y: auto;
-  padding: 1rem;
+  width: min(26.5rem, calc(100vw - 2rem));
   display: flex;
   flex-direction: column;
   gap: 0.6rem;
+  color: var(--navy-ink);
+  text-align: left;
+  pointer-events: none; /* lo transparente no tapa la página */
+  --eva-shadow: 0 14px 34px -16px rgba(10, 46, 94, 0.5), 0 2px 8px rgba(10, 46, 94, 0.1);
+}
+
+.eva-dock > * {
+  pointer-events: auto;
+}
+
+/* La charla: una columna de globitos que se desvanece arriba */
+.eva-thread {
+  max-height: min(48vh, 26rem);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 1.5rem 0.35rem 0.6rem;
+  scrollbar-width: none;
+  -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 1.75rem);
+  mask-image: linear-gradient(to bottom, transparent 0, #000 1.75rem);
+}
+
+.eva-thread::-webkit-scrollbar {
+  display: none;
+}
+
+/* Mientras recorre o lee, la charla ocupa menos para dejar ver la página */
+.eva-dock.is-reading .eva-thread {
+  max-height: min(30vh, 15rem);
 }
 
 .eva-messages {
   display: flex;
   flex-direction: column;
-  gap: 0.6rem;
+  gap: 0.5rem;
 }
 
-.eva-msg {
-  max-width: 88%;
+.eva-dock .eva-bubble {
+  max-width: 86%;
   margin: 0;
-  padding: 0.65rem 0.9rem;
-  border-radius: 1.1rem;
-  font-size: 0.98rem;
+  padding: 0.7rem 1rem;
+  border-radius: 1.35rem;
+  font-size: 1.03rem;
   font-weight: 500;
   line-height: 1.45;
+  box-shadow: var(--eva-shadow);
+  animation: eva-pop 0.32s cubic-bezier(0.2, 0.9, 0.3, 1.25) both;
 }
 
-.eva-msg.from-eva {
+/* Globitos de Eva: salen de ella (abajo a la izquierda) */
+.eva-dock .eva-bubble.from-eva {
   align-self: flex-start;
+  border: 1.5px solid var(--line);
   border-bottom-left-radius: 0.35rem;
-  background: var(--bg-soft);
+  background: #fff;
   color: var(--navy-ink);
+  transform-origin: bottom left;
 }
 
-.eva-msg.from-user {
+.eva-dock .eva-bubble.from-user {
   align-self: flex-end;
   border-bottom-right-radius: 0.35rem;
   background: var(--navy);
   color: #fff;
+  transform-origin: bottom right;
 }
 
+/* Lo que Eva está diciendo ahora mismo (subtítulo del recorrido) */
+.eva-dock .eva-bubble.is-caption {
+  border-color: #f2c94c;
+  background: #fffaf0;
+}
+
+/* Lo que está entendiendo mientras la persona habla */
+.eva-dock .eva-bubble.is-draft {
+  opacity: 0.78;
+  font-style: italic;
+  animation: none;
+}
+
+@keyframes eva-pop {
+  from {
+    opacity: 0;
+    transform: translateY(0.6rem) scale(0.9);
+  }
+}
+
+/* Primera vez: cómo prefiere comunicarse */
 .eva-modes {
+  align-self: flex-start;
   display: grid;
-  gap: 0.5rem;
-  margin-top: 0.25rem;
+  gap: 0.45rem;
+  width: 86%;
 }
 
 .eva-mode {
   display: grid;
   gap: 0.15rem;
-  padding: 0.75rem 0.9rem;
+  padding: 0.7rem 0.95rem;
   border: 1.5px solid var(--line);
-  border-radius: 1rem;
+  border-radius: 1.1rem;
   background: #fff;
   color: var(--navy);
   font: inherit;
   text-align: left;
+  box-shadow: var(--eva-shadow);
   cursor: pointer;
 }
 
@@ -328,48 +271,197 @@
   border-color: var(--cyan);
 }
 
+/* Pedidos rápidos: una tira de botones redondeados */
 .eva-chips {
   display: flex;
-  flex-wrap: wrap;
   gap: 0.4rem;
-  padding: 0.25rem 1rem 0.75rem;
+  overflow-x: auto;
+  padding: 0.2rem 0.35rem 0.35rem;
+  scrollbar-width: none;
+}
+
+.eva-chips::-webkit-scrollbar {
+  display: none;
 }
 
 .eva-chip {
-  padding: 0.45rem 0.8rem;
+  flex: none;
+  padding: 0.5rem 0.85rem;
   border: 1.5px solid var(--line);
   border-radius: 999px;
   background: #fff;
   color: var(--navy);
   font: inherit;
-  font-size: 0.85rem;
+  font-size: 0.875rem;
   font-weight: 700;
+  box-shadow: 0 6px 16px -10px rgba(10, 46, 94, 0.45);
   cursor: pointer;
 }
 
-.eva-chip-stop {
-  border-color: var(--sun);
-  background: var(--sun);
+/* Eva, grande, con su estado al lado */
+.eva-stage {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: end;
+  gap: 0.75rem;
 }
 
+.eva-pad {
+  position: relative;
+  width: 12.5rem;
+  padding: 0.5rem 0.75rem 0.35rem;
+  border: 4px solid transparent;
+  border-radius: 2.4rem;
+  background:
+    linear-gradient(#fff, #fff) padding-box,
+    linear-gradient(#fff, #fff) border-box;
+  color: var(--navy);
+  box-shadow: var(--eva-shadow);
+  --eva-hole: #fff;
+  transform-origin: bottom left;
+  animation: eva-appear 0.4s cubic-bezier(0.2, 0.9, 0.3, 1.2) both;
+}
+
+.eva-pad .eva-char {
+  width: 100%;
+}
+
+/* Aro con los colores de la marca mientras escucha */
+.eva-pad.is-listening {
+  background:
+    linear-gradient(#fff, #fff) padding-box,
+    linear-gradient(90deg, var(--navy), var(--cyan), var(--sky), var(--cyan), var(--navy)) border-box;
+  background-size:
+    100% 100%,
+    200% 100%;
+  animation:
+    eva-appear 0.4s cubic-bezier(0.2, 0.9, 0.3, 1.2) both,
+    eva-ring 1.4s linear infinite;
+}
+
+@keyframes eva-ring {
+  to {
+    background-position:
+      0 0,
+      -200% 0;
+  }
+}
+
+@keyframes eva-appear {
+  from {
+    opacity: 0;
+    transform: translateY(1.25rem) scale(0.85);
+  }
+}
+
+.eva-side {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.45rem;
+  min-width: 0;
+}
+
+.eva-tools {
+  align-self: flex-end;
+  display: flex;
+  gap: 0.4rem;
+}
+
+.eva-round {
+  width: 2.5rem;
+  height: 2.5rem;
+  display: grid;
+  place-items: center;
+  border: 1.5px solid var(--line);
+  border-radius: 50%;
+  background: #fff;
+  color: var(--navy);
+  box-shadow: 0 6px 16px -10px rgba(10, 46, 94, 0.45);
+  cursor: pointer;
+}
+
+.eva-round:hover,
+.eva-round[aria-pressed="true"] {
+  border-color: var(--cyan);
+}
+
+.eva-dock .eva-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  max-width: 100%;
+  margin: 0;
+  padding: 0.4rem 0.8rem;
+  border-radius: 999px;
+  background: #fff;
+  color: var(--navy);
+  font-size: 0.875rem;
+  font-weight: 700;
+  line-height: 1.2;
+  box-shadow: 0 6px 16px -10px rgba(10, 46, 94, 0.45);
+}
+
+.eva-dock .eva-status::before {
+  content: "";
+  flex: none;
+  width: 0.55rem;
+  height: 0.55rem;
+  border-radius: 50%;
+  background: #b9c8d8;
+}
+
+.eva-dock .eva-status.is-live::before {
+  background: var(--cyan);
+  animation: eva-pulse 1.2s ease-in-out infinite;
+}
+
+.eva-stop {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.5rem 0.95rem;
+  border: 0;
+  border-radius: 999px;
+  background: var(--sun);
+  color: var(--navy);
+  font: inherit;
+  font-size: 0.9rem;
+  font-weight: 800;
+  box-shadow: 0 6px 16px -10px rgba(10, 46, 94, 0.45);
+  cursor: pointer;
+}
+
+/* Caja para escribir: una píldora con el micrófono y enviar */
 .eva-input {
   display: flex;
-  gap: 0.5rem;
-  padding: 0.75rem 1rem 1rem;
-  border-top: 1px solid var(--line);
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.3rem 0.3rem 0.3rem 1rem;
+  border: 1.5px solid var(--line);
+  border-radius: 999px;
+  background: #fff;
+  box-shadow: var(--eva-shadow);
+}
+
+.eva-input:focus-within {
+  border-color: var(--navy);
 }
 
 .eva-input input {
   flex: 1;
   min-width: 0;
-  padding: 0.7rem 0.9rem;
-  border: 1.5px solid var(--line);
-  border-radius: 0.85rem;
-  background: #fff;
+  padding: 0.5rem 0;
+  border: 0;
+  background: transparent;
   color: var(--navy-ink);
   font: inherit;
   font-size: 1rem;
   font-weight: 500;
+}
+
+.eva-input input:focus {
+  outline: none;
 }
 
 .eva-input input::placeholder {
@@ -379,11 +471,11 @@
 .eva-mic,
 .eva-send {
   flex: none;
-  width: 2.9rem;
-  height: 2.9rem;
+  width: 2.6rem;
+  height: 2.6rem;
   display: grid;
   place-items: center;
-  border-radius: 0.85rem;
+  border-radius: 50%;
   cursor: pointer;
 }
 
@@ -397,7 +489,6 @@
   border-color: var(--cyan);
   background: var(--cyan);
   color: #fff;
-  animation: eva-pulse 1.2s ease-in-out infinite;
 }
 
 .eva-mic:disabled {
@@ -413,14 +504,40 @@
 
 @keyframes eva-pulse {
   50% {
-    box-shadow: 0 0 0 0.4rem rgba(0, 169, 233, 0.25);
+    box-shadow: 0 0 0 0.35rem rgba(0, 169, 233, 0.25);
   }
+}
+
+/* Ajustes: una tarjeta redondeada en lugar de la charla */
+.eva-card {
+  max-height: min(58vh, 32rem);
+  overflow-y: auto;
+  padding: 0.9rem 1.1rem 1.1rem;
+  border: 1.5px solid var(--line);
+  border-radius: 1.5rem;
+  background: #fff;
+  box-shadow: var(--eva-shadow);
+  animation: eva-pop 0.28s cubic-bezier(0.2, 0.9, 0.3, 1.2) both;
+  transform-origin: bottom left;
+}
+
+.eva-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.eva-card-head h3 {
+  margin: 0;
+  font-size: 1.15rem;
+  font-weight: 800;
+  color: var(--navy);
 }
 
 /* ---------- Ajustes ---------- */
 .eva-settings {
-  overflow-y: auto;
-  padding: 0.25rem 1rem 1rem;
+  padding-top: 0.25rem;
 }
 
 .eva-row {
@@ -536,26 +653,6 @@
   cursor: pointer;
 }
 
-/* Botón para cortar la lectura con el panel cerrado */
-.eva-stop-float {
-  position: fixed;
-  right: max(1rem, env(safe-area-inset-right, 0px));
-  bottom: max(1rem, env(safe-area-inset-bottom, 0px));
-  z-index: 1001;
-  display: inline-flex;
-  align-items: center;
-  gap: 0.5rem;
-  padding: 0.7rem 1.1rem;
-  border: 0;
-  border-radius: 999px;
-  background: var(--sun);
-  color: var(--navy);
-  font: inherit;
-  font-weight: 800;
-  box-shadow: var(--shadow);
-  cursor: pointer;
-}
-
 /* Avisos cortos (por ejemplo, al activar «Eva por voz») */
 .eva-toast {
   position: fixed;
@@ -600,13 +697,19 @@
 }
 
 @media (max-width: 40rem) {
-  .eva-panel {
-    left: 0.5rem;
-    right: 0.5rem;
-    bottom: max(0.5rem, env(safe-area-inset-bottom, 0px));
+  .eva-dock {
+    left: 0.75rem;
+    right: 0.75rem;
+    bottom: max(0.75rem, env(safe-area-inset-bottom, 0px));
     width: auto;
-    max-height: calc(100dvh - 5rem);
-    border-radius: 1.2rem;
+  }
+
+  .eva-pad {
+    width: 9.5rem;
+  }
+
+  .eva-thread {
+    max-height: 42vh;
   }
 
   .eva-voice-label {
@@ -694,37 +797,16 @@ html.eva-a11y-pause *::after {
   scroll-margin: 6rem;
 }
 
-html.eva-a11y-contrast .eva-msg.from-eva,
+html.eva-a11y-contrast .eva-bubble.from-eva,
 html.eva-a11y-contrast .eva-mode,
-html.eva-a11y-contrast .eva-chip {
-  border: 1.5px solid #000;
+html.eva-a11y-contrast .eva-chip,
+html.eva-a11y-contrast .eva-round,
+html.eva-a11y-contrast .eva-input,
+html.eva-a11y-contrast .eva-card,
+html.eva-a11y-contrast .eva-status {
+  border: 2px solid #000;
 }
 
-/* Mientras lee o recorre, el panel se achica para dejar ver la página */
-.eva-panel.is-compact .eva-tabs {
-  display: none;
-}
-
-.eva-compact-stop {
-  margin-top: 0.45rem;
-}
-
-.eva-hint {
-  margin: 0.4rem 0 0;
-  font-size: 0.8rem;
-  font-weight: 600;
-  color: var(--muted);
-}
-
-/* Lo que está entendiendo el micrófono mientras recorre */
-.eva-heard {
-  display: -webkit-box;
-  margin: 0.25rem 0 0;
-  overflow: hidden;
-  font-size: 0.78rem;
-  font-weight: 500;
-  font-style: italic;
-  color: var(--navy-ink);
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
+html.eva-a11y-contrast .eva-pad:not(.is-listening) {
+  border-color: #000;
 }

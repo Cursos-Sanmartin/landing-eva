@@ -120,6 +120,8 @@ export function interpret(raw) {
   if (!t) return { type: "empty" };
   // Si repite «Eva, ¿estás ahí?» cuando ya está abierta, solo saluda
   if (WAKE_PATTERNS.some((pattern) => pattern.test(t))) return { type: "hello" };
+  // «¿Qué podés hacer?» (aunque se pierda el «qué» si lo dijo encima de Eva)
+  if (/^(que )?(podes|podrias|puedes|sabes) hacer( vos)?$/.test(t)) return { type: "help" };
   // Muletillas y cortesía: «che, ¿me podés abrir este, por favor?» → «abrir este»
   const plain = t
     .replace(/^((eva|asistente|che|bueno|ok|okey|dale|a ver|porfa|por favor|perdon|disculpa|oye|escucha|escuchame) )+/, "")
@@ -218,40 +220,125 @@ export function interpret(raw) {
   return { type: "unknown" };
 }
 
-// ---------- ¿Le están hablando encima? ----------
+// ---------- ¿Lo dijo la persona o es la voz de Eva? ----------
+// El micrófono también oye a Eva por los parlantes. Para saber qué dijo la persona,
+// se descartan las palabras que Eva acaba de decir (aunque Chrome las entienda un poco distinto).
 
-// Palabras que Eva puede decir de otra forma cuando lee números («51» → «cincuenta y uno»)
-const NUMBER_WORDS = new Set(
+// Palabras que Eva dice de otra forma: números («51» → «cincuenta y uno») y letras de siglas («EES» → «e e ese»)
+const SPELLED_WORDS = new Set(
   ("cero uno una dos tres cuatro cinco seis siete ocho nueve diez once doce trece catorce quince dieciseis " +
     "diecisiete dieciocho diecinueve veinte veintiuno veintidos veintitres veinticuatro veinticinco treinta " +
-    "cuarenta cincuenta sesenta setenta ochenta noventa cien ciento mil numero").split(" "),
+    "cuarenta cincuenta sesenta setenta ochenta noventa cien ciento mil numero numeros nro " +
+    "be ce de efe ge hache jota ka ele eme ene ene pe cu erre ese te ve uve doble equis ye zeta").split(" "),
 );
 
-// Una sola de estas alcanza para saber que la persona le está hablando
+// Palabras cortas muy comunes: solas no alcanzan para saber que habló la persona
+const COMMON_WORDS = new Set("que los las del con por les sus mas muy hay son fue era una uno".split(" "));
+
+// Palabras que la persona usa para llamar la atención o pedir algo
 const ATTENTION_WORDS = new Set(
-  ("abri abre abrime abrilo abrila abriste abrelo siguiente anterior basta para pare frena stop eva asistente " +
-    "espera segui cerra volve atras che hola momento perdon escucha escuchame oye mostrame").split(" "),
+  ("abri abre abrime abrilo abrila abris abrir abrirlo siguiente anterior basta para pare frena stop eva " +
+    "asistente espera segui cerra volve atras che hola momento perdon escucha escuchame oye mostrame " +
+    "podes podrias contame conta decime").split(" "),
 );
 
-// ¿Esta palabra la dijo la persona? (no la acaba de decir Eva, ni es un número leído en voz alta)
+// Distancia de edición, cortando apenas pasa el máximo
+function near(a, b, max) {
+  if (Math.abs(a.length - b.length) > max) return false;
+  let prev = Array.from({ length: b.length + 1 }, (_, j) => j);
+  for (let i = 1; i <= a.length; i++) {
+    const row = [i];
+    let best = i;
+    for (let j = 1; j <= b.length; j++) {
+      const v = Math.min(prev[j] + 1, row[j - 1] + 1, prev[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+      row.push(v);
+      if (v < best) best = v;
+    }
+    if (best > max) return false;
+    prev = row;
+  }
+  return prev[b.length] <= max;
+}
+
+// Cómo suena una palabra: Chrome puede escribir «quest», «kest» o «cuest» para lo mismo
+function sound(w) {
+  return w
+    .replace(/h/g, "")
+    .replace(/qu/g, "k")
+    .replace(/c([ei])/g, "s$1")
+    .replace(/[cq]/g, "k")
+    .replace(/z/g, "s")
+    .replace(/x/g, "ks")
+    .replace(/v/g, "b")
+    .replace(/w/g, "u")
+    .replace(/ll/g, "y")
+    .replace(/([a-z])\1/g, "$1");
+}
+
+// Devuelve una función que dice si una palabra es de la persona (no la acaba de decir Eva)
 function freshWords(spokenTexts) {
   const known = new Set(spokenTexts.join(" ").split(" ").filter(Boolean));
-  const stems = new Set([...known].filter((w) => w.length >= 4).map((w) => w.slice(0, 4)));
-  return (w) => w.length >= 3 && !known.has(w) && !NUMBER_WORDS.has(w) && !stems.has(w.slice(0, 4));
+  const sounds = [...new Set([...known].filter((w) => w.length >= 3).map(sound))];
+  const soundSet = new Set(sounds);
+  const stems = new Set(sounds.filter((s) => s.length >= 4).map((s) => s.slice(0, 4)));
+  return (w) => {
+    if (w.length < 3 || known.has(w) || SPELLED_WORDS.has(w)) return false;
+    // Las palabras para pedir algo cuentan aunque se parezcan a algo que dijo Eva
+    if (ATTENTION_WORDS.has(w)) return true;
+    if (COMMON_WORDS.has(w)) return false;
+    const s = sound(w);
+    if (soundSet.has(s) || (s.length >= 4 && stems.has(s.slice(0, 4)))) return false;
+    const max = s.length >= 5 ? 2 : s.length === 4 ? 1 : 0;
+    return !max || !sounds.some((k) => k.length >= 3 && near(s, k, max));
+  };
 }
 
-// Mira las últimas palabras que oyó el micrófono y descarta las que Eva acaba de decir.
-// Si quedan dos palabras nuevas (o una que llama la atención), la persona le está hablando.
-export function isTalkingOver(t, spokenTexts) {
-  const isFresh = freshWords(spokenTexts);
-  const fresh = t.split(" ").filter(Boolean).slice(-4).filter(isFresh);
-  return fresh.length >= 2 || fresh.some((w) => ATTENTION_WORDS.has(w));
+// ¿Es la voz de Eva o es de la persona? Las dos funciones reciben lo que Eva dijo en los
+// últimos segundos (no todo el texto: si la persona repite algo que Eva dijo hace rato, es suya).
+
+// Mientras Eva habla: es de la persona si no se parece a nada de lo que Eva viene diciendo
+export function freshTest(evaText) {
+  return freshWords([evaText]);
 }
 
-// Lo que dijo la persona: desde su primera palabra en adelante
-export function userPart(t, spokenTexts) {
+// Apenas se calla: sus últimas palabras todavía pueden llegar (Chrome tarda en escribirlas)
+export function lateEchoTest(evaText) {
+  const tail = [...new Set(evaText.split(" ").filter(Boolean).map(sound))];
+  return (w) => {
+    const s = sound(w);
+    return w.length === 1 || SPELLED_WORDS.has(w) || tail.some((k) => k === s || (s.length >= 4 && near(s, k, 1)));
+  };
+}
+
+// La frase de la persona sin las palabras de Eva que se colaron (cuando la cortan, lo último
+// que dijo todavía llega un instante después). Las palabras cortas de los pedidos se quedan.
+const KEEP_WORDS = new Set("este esta ese esa eso esto el la lo los las un una al del de que me te le".split(" "));
+export function withoutEcho(t, spokenTexts, keepShort = true) {
   const isFresh = freshWords(spokenTexts);
+  return t
+    .split(" ")
+    .filter((w) => w && ((keepShort && KEEP_WORDS.has(w)) || isFresh(w)))
+    .join(" ");
+}
+
+// Lo que queda de la frase para llamarla («…¿estás ahí?») o el nombre al principio no es un pedido
+const CALL_WORDS = new Set("eva asistente estas esta ahi alli ahi oye hey ey".split(" "));
+export function withoutCall(t) {
   const words = t.split(" ").filter(Boolean);
-  const first = words.findIndex(isFresh);
-  return first < 0 ? "" : words.slice(first).join(" ");
+  let i = 0;
+  while (i < words.length && CALL_WORDS.has(words[i])) i += 1;
+  return words.slice(i).join(" ");
+}
+
+// «Seguí», «dale», «nada»: que siga con lo que estaba haciendo
+export function isResume(t) {
+  return /(^| )(segui|seguir|sigue|continua|continuar|dale|nada|perdon|disculpa|listo|ok|okey|no importa)( |$)/.test(t);
+}
+
+// «Che», «escuchame», «esperá»: solo le pidió atención
+export function isAttention(t) {
+  return (
+    /^((che|eva|asistente|escucha|escuchame|oye|ey|eh|espera|esperame|un momento|momento|hola|a ver) ?)+$/.test(t) ||
+    /^((che|eva) )?(para|pare|espera|esperame|pera|aguarda|aguanta)( (un|una) (momento|segundo|cosa|toque))$/.test(t)
+  );
 }

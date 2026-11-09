@@ -9,6 +9,8 @@ const Recognition =
 export const canSpeak = Boolean(synth) && typeof window.SpeechSynthesisUtterance !== "undefined";
 export const canListen = Boolean(Recognition);
 
+const now = () => (typeof performance !== "undefined" ? performance.now() : Date.now());
+
 let voices = [];
 function loadVoices() {
   try {
@@ -32,94 +34,253 @@ function pickVoice() {
   return voices.find((v) => /^es/i.test(v.lang || "")) || null;
 }
 
-// Guardamos la frase activa para que el navegador no la descarte a mitad de camino
-let current = null;
+// ---------- Hablar ----------
+
+// Si Eva está hablando y desde cuándo está callada: sirve para no confundir
+// su propia voz (que el micrófono también oye) con lo que dice la persona.
+let talking = false;
+let quietAt = -1e9;
+let seq = 0; // cada frase nueva, o cada corte, deja sin efecto a la anterior
+const live = { utterance: null }; // la frase activa: si no la guardamos, el navegador a veces la descarta
+let lastCancel = -1e9;
+
+export function speechState() {
+  return { talking, quietAt };
+}
+
+// Qué dijo Eva y cuándo, para saber qué palabras suyas puede estar oyendo el micrófono
+const said = []; // { text, start, end, cut }
+let charsPerSecond = 15; // se ajusta con lo que tarda de verdad cada frase
+
+function saidStart(text) {
+  const entry = { text, start: now(), end: 0, cut: false };
+  said.push(entry);
+  if (said.length > 12) said.shift();
+  return entry;
+}
+
+function saidEnd(entry, cut) {
+  if (!entry || entry.end) return;
+  entry.end = now();
+  entry.cut = cut;
+  const ms = entry.end - entry.start;
+  if (!cut && ms > 800) charsPerSecond = charsPerSecond * 0.6 + (entry.text.length / ms) * 1000 * 0.4;
+}
+
+// Lo que Eva dijo entre at − back y at + ahead (milisegundos), estimando por el tiempo
+// qué parte de cada frase sonó en ese rato. Se agranda a palabras enteras.
+export function spokenAround(at, back = 5000, ahead = 2000) {
+  const from = at - back;
+  const to = at + ahead;
+  const parts = [];
+  for (const entry of said) {
+    const end = entry.end || Infinity;
+    if (end < from || entry.start > to) continue;
+    const len = entry.text.length;
+    const rate = entry.end && !entry.cut ? (len / Math.max(1, entry.end - entry.start)) * 1000 : charsPerSecond;
+    // Si la cortaron, no sabemos bien hasta dónde llegó: damos un margen
+    const until = Math.min(to, entry.cut ? end + 1500 : end);
+    let a = Math.max(0, Math.floor(((from - entry.start) / 1000) * rate));
+    let b = Math.min(len, Math.ceil(((until - entry.start) / 1000) * rate));
+    if (b <= a) continue;
+    while (a > 0 && entry.text[a - 1] !== " ") a -= 1;
+    while (b < len && entry.text[b] !== " ") b += 1;
+    parts.push(entry.text.slice(a, b));
+  }
+  return parts.join(" ");
+}
+
+function hushed() {
+  if (!talking) return;
+  talking = false;
+  quietAt = now();
+}
 
 export function stopSpeaking() {
-  current = null;
+  seq += 1;
+  live.utterance = null;
+  hushed();
+  // Lo que estaba diciendo quedó cortado acá
+  const last = said[said.length - 1];
+  if (last && !last.end) saidEnd(last, true);
   if (!synth) return;
   try {
+    if (synth.speaking || synth.pending) lastCancel = now();
     synth.cancel();
   } catch {
     // el navegador no dejó cancelar; no pasa nada
   }
 }
 
-// Dice un texto. onEnd se llama al terminar, si falla o si no hay voz disponible.
+// Chrome deja de hablar sin avisar cuando una frase es muy larga,
+// así que los textos largos se dicen de a una oración (y las muy largas, de a partes).
+function splitText(text) {
+  const sentences = text.match(/[^.!?…]+[.!?…]*["»”)]*\s*/g) || [text];
+  const pieces = [];
+  for (const sentence of sentences) {
+    const s = sentence.trim();
+    if (!s) continue;
+    if (s.length <= 180) {
+      pieces.push(s);
+      continue;
+    }
+    let buf = "";
+    for (const part of s.split(/(?<=,)\s+/)) {
+      if (buf && (buf + " " + part).length > 160) {
+        pieces.push(buf);
+        buf = part;
+      } else {
+        buf = buf ? buf + " " + part : part;
+      }
+    }
+    if (buf) pieces.push(buf);
+  }
+  // Juntamos oraciones cortas para que no suene entrecortado
+  const chunks = [];
+  for (const piece of pieces) {
+    const last = chunks[chunks.length - 1];
+    if (last && (last + " " + piece).length <= 140) chunks[chunks.length - 1] = last + " " + piece;
+    else chunks.push(piece);
+  }
+  return chunks.length ? chunks : [text];
+}
+
+// Dice un texto. onEnd se llama siempre: al terminar, si falla, si la cortan
+// o si el navegador se cuelga (lo vigilamos, porque a veces no avisa que terminó).
 export function speak(text, { onEnd } = {}) {
   if (!canSpeak || !text) {
     onEnd?.();
     return;
   }
+  // Recién cortada otra frase, Chrome a veces descarta la nueva: esperamos un instante
+  const justCut = Boolean(synth.speaking || synth.pending) || now() - lastCancel < 200;
   stopSpeaking();
-  const utterance = new window.SpeechSynthesisUtterance(text);
-  utterance.lang = "es-AR";
-  utterance.rate = 1;
-  utterance.pitch = 1.05;
-  const voice = pickVoice();
-  if (voice) utterance.voice = voice;
-
+  const my = seq;
+  const chunks = splitText(text);
+  talking = true;
   let done = false;
+  let timer = 0;
+
   const finish = () => {
     if (done) return;
     done = true;
-    if (current === utterance) current = null;
+    window.clearTimeout(timer);
+    if (seq === my) {
+      live.utterance = null;
+      hushed();
+    }
     onEnd?.();
   };
-  utterance.onend = finish;
-  utterance.onerror = finish;
-  current = utterance;
-  synth.speak(utterance);
+
+  const sayChunk = (i, isRetry) => {
+    if (seq !== my || i >= chunks.length) {
+      finish();
+      return;
+    }
+    const utterance = new window.SpeechSynthesisUtterance(chunks[i]);
+    utterance.lang = "es-AR";
+    utterance.rate = 1;
+    utterance.pitch = 1.05;
+    const voice = pickVoice();
+    if (voice) utterance.voice = voice;
+
+    let started = false;
+    let over = false;
+    let idle = 0;
+    let since = now();
+    let entry = null;
+    const limit = 3000 + chunks[i].length * 140;
+
+    const next = (delay = 0) => {
+      if (over) return;
+      over = true;
+      saidEnd(entry, false);
+      window.clearTimeout(timer);
+      if (delay) timer = window.setTimeout(() => sayChunk(i + 1, false), delay);
+      else sayChunk(i + 1, false);
+    };
+    utterance.onstart = () => {
+      started = true;
+      // Con voces por internet tarda un poco en arrancar: contamos desde que suena
+      if (entry && !entry.end) entry.start = now();
+    };
+    utterance.onend = () => next();
+    utterance.onerror = () => {
+      if (seq !== my) {
+        saidEnd(entry, true);
+        finish();
+      } else next();
+    };
+
+    const watch = () => {
+      if (over) return;
+      if (seq !== my) {
+        finish();
+        return;
+      }
+      const busy = Boolean(synth.speaking || synth.pending);
+      const elapsed = now() - since;
+      // Nunca arrancó: el navegador la descartó. Probamos una vez más y si no, seguimos.
+      if (!started && !busy && elapsed > 1500) {
+        over = true;
+        if (isRetry) {
+          sayChunk(i + 1, false);
+        } else {
+          try {
+            synth.cancel();
+          } catch {
+            // nada
+          }
+          timer = window.setTimeout(() => sayChunk(i, true), 150);
+        }
+        return;
+      }
+      // Terminó pero no avisó, o se quedó colgada
+      idle = started && !busy ? idle + 1 : 0;
+      if (idle >= 3 || elapsed > limit) {
+        if (elapsed > limit) {
+          try {
+            synth.cancel();
+          } catch {
+            // nada
+          }
+        }
+        next(150);
+        return;
+      }
+      timer = window.setTimeout(watch, 250);
+    };
+
+    const go = () => {
+      if (seq !== my) {
+        finish();
+        return;
+      }
+      live.utterance = utterance;
+      since = now();
+      entry = saidStart(chunks[i]);
+      try {
+        synth.resume?.();
+        synth.speak(utterance);
+      } catch {
+        finish();
+        return;
+      }
+      timer = window.setTimeout(watch, 250);
+    };
+    if (i === 0 && !isRetry && justCut) timer = window.setTimeout(go, 150);
+    else go();
+  };
+
+  sayChunk(0, false);
 }
 
-// Escucha una frase. Devuelve una función para cortar.
-// onPartial: lo que va entendiendo. onEnd(texto, error): al terminar.
-export function listen({ onPartial, onEnd }) {
-  if (!Recognition) {
-    onEnd?.("", "unsupported");
-    return () => {};
-  }
-  const rec = new Recognition();
-  rec.lang = "es-AR";
-  rec.interimResults = true;
-  rec.maxAlternatives = 1;
-  rec.continuous = false;
+// ---------- Escuchar ----------
 
-  let finalText = "";
-  let error = null;
-  rec.onresult = (e) => {
-    let interim = "";
-    for (let i = e.resultIndex; i < e.results.length; i++) {
-      const result = e.results[i];
-      if (result.isFinal) finalText += result[0].transcript;
-      else interim += result[0].transcript;
-    }
-    onPartial?.((finalText + interim).trim());
-  };
-  rec.onerror = (e) => {
-    error = e.error;
-  };
-  rec.onend = () => onEnd?.(finalText.trim(), error);
-
-  try {
-    rec.start();
-  } catch {
-    onEnd?.("", "start");
-    return () => {};
-  }
-  return () => {
-    try {
-      rec.abort();
-    } catch {
-      // ya estaba cortado
-    }
-  };
-}
-
-// Escucha de fondo hasta oír la frase para llamar a Eva (como «Ok Google»).
-// match(texto, esFinal, momento, clave) decide si lo que oyó es la frase; la clave identifica
-// cada frase mientras Chrome la va completando. Chrome corta la escucha cada tanto,
+// Escucha de fondo, sin cortar (como «Ok Google»). Chrome corta la escucha cada tanto,
 // así que la volvemos a prender sola. Devuelve una función para apagarla.
+// match(texto, esFinal, momento, clave): se llama con cada cosa que va entendiendo; la clave
+// identifica cada frase mientras Chrome la completa. Si devuelve true, se deja de escuchar.
 // onReady: el micrófono quedó escuchando. onFatal(error): no se puede escuchar (sin permiso, sin micrófono).
 export function listenForWakeWord({ match, onWake, onReady, onFatal }) {
   if (!Recognition) {
@@ -144,7 +305,7 @@ export function listenForWakeWord({ match, onWake, onReady, onFatal }) {
     rec.interimResults = true;
     rec.maxAlternatives = 1;
     rec.onstart = () => {
-      startedAt = Date.now();
+      startedAt = now();
       if (!announced) {
         announced = true;
         onReady?.();
@@ -174,11 +335,11 @@ export function listenForWakeWord({ match, onWake, onReady, onFatal }) {
     rec.onend = () => {
       if (stopped) return;
       // Si se corta enseguida (red, silencio), esperamos cada vez un poco más
-      retries = Date.now() - startedAt < 1500 ? retries + 1 : 0;
+      retries = now() - startedAt < 1500 ? retries + 1 : 0;
       timer = window.setTimeout(startOne, Math.min(10000, 300 * 2 ** retries));
     };
     try {
-      startedAt = Date.now();
+      startedAt = now();
       rec.start();
     } catch {
       timer = window.setTimeout(startOne, 1000);
@@ -206,7 +367,7 @@ export function playChime() {
     if (!Context) return;
     audioCtx = audioCtx || new Context();
     if (audioCtx.state === "suspended") audioCtx.resume().catch(() => {});
-    const now = audioCtx.currentTime;
+    const t = audioCtx.currentTime;
     [
       [660, 0],
       [880, 0.12],
@@ -215,12 +376,12 @@ export function playChime() {
       const gain = audioCtx.createGain();
       osc.type = "sine";
       osc.frequency.value = freq;
-      gain.gain.setValueAtTime(0.0001, now + at);
-      gain.gain.exponentialRampToValueAtTime(0.18, now + at + 0.02);
-      gain.gain.exponentialRampToValueAtTime(0.0001, now + at + 0.22);
+      gain.gain.setValueAtTime(0.0001, t + at);
+      gain.gain.exponentialRampToValueAtTime(0.18, t + at + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.0001, t + at + 0.22);
       osc.connect(gain).connect(audioCtx.destination);
-      osc.start(now + at);
-      osc.stop(now + at + 0.25);
+      osc.start(t + at);
+      osc.stop(t + at + 0.25);
     });
   } catch {
     // sin audio
