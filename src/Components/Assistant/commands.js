@@ -115,7 +115,15 @@ export function isWakePhrase(raw) {
 
 // ---------- Interpretar un pedido ----------
 
+// Entiende un pedido: primero por frases conocidas y, si no coincide ninguna,
+// por palabras sueltas (aunque Chrome las haya escrito un poco distinto)
 export function interpret(raw) {
+  const intent = interpretPhrase(raw);
+  if (intent.type !== "unknown") return intent;
+  return interpretWords(normalize(raw)) || intent;
+}
+
+function interpretPhrase(raw) {
   let t = normalize(raw);
   if (!t) return { type: "empty" };
   // Si repite «Eva, ¿estás ahí?» cuando ya está abierta, solo saluda
@@ -362,4 +370,120 @@ export function isAttention(t) {
     /^((che|eva|asistente|escucha|escuchame|oye|ey|eh|espera|esperame|un momento|momento|hola|a ver) ?)+$/.test(t) ||
     /^((che|eva) )?(para|pare|espera|esperame|pera|aguarda|aguanta)( (un|una) (momento|segundo|cosa|toque))$/.test(t)
   );
+}
+
+// ---------- Por palabras sueltas ----------
+// Cuando la frase no coincide con ninguna conocida, se busca la orden por sus palabras.
+// Se comparan por cómo suenan: «abri», «habrí» o «abrí» valen lo mismo, y «nabega» es «navega».
+
+function like(w, key) {
+  if (w === key) return true;
+  const s = sound(w);
+  const k = sound(key);
+  if (s === k) return true;
+  if (k.length >= 4 && s.startsWith(k)) return true;
+  return k.length >= 5 && s[0] === k[0] && near(s, k, 1);
+}
+
+const likeAny = (words, keys) => words.some((w) => keys.some((k) => like(w, k)));
+
+// En orden de importancia: si dice «basta», eso gana
+const WORD_ORDERS = [
+  ["stop", ["basta", "frena", "frenar", "detene", "detener", "callate", "silencio", "stop"]],
+  ["thanks", ["gracias"]],
+  ["close", ["chau", "chao", "adios"]],
+  ["newTab", ["pestana", "ventana"]],
+  ["closeWork", ["cerra", "cerralo", "cerrala", "cerrar", "cerrarlo", "salir"]],
+  ["open", ["abri", "abrir", "abrilo", "abrila", "abre", "abrime", "abrirlo", "abris"]],
+  ["next", ["siguiente", "proximo", "proxima", "adelante"]],
+  ["prev", ["anterior", "atras"]],
+  ["program", ["programa", "unidades", "cursos"]],
+  ["tour", ["navega", "navegar", "navegame", "recorre", "recorrer", "recorrido", "proyectos", "trabajos"]],
+  ["read", ["leer", "leeme", "lectura"]],
+  ["bigger", ["agranda", "agrandar", "agrandame", "aumenta", "grande", "zoom"]],
+  ["smaller", ["achica", "achicar", "achicame", "reduci", "chico", "chiquito"]],
+  ["contrast", ["contraste"]],
+  ["font", ["legible", "fuente", "tipografia"]],
+  ["links", ["enlaces", "links", "vinculos"]],
+  ["pause", ["animaciones", "movimiento"]],
+  ["help", ["ayuda", "ayudame"]],
+  ["themes", ["tematicas"]],
+  ["hello", ["hola", "buenas"]],
+];
+
+// El trabajo cuyo nombre se parece a lo que dijo (al menos la mitad de sus palabras)
+function findProjectLike(words) {
+  let best = null;
+  let bestScore = 0;
+  for (const item of PROJECT_INDEX) {
+    if (!item.words.length) continue;
+    const hits = item.words.filter((k) => words.some((w) => w.length >= 3 && like(w, k))).length;
+    const score = hits / item.words.length;
+    if (hits && score >= 0.5 && score > bestScore) {
+      best = item;
+      bestScore = score;
+    }
+  }
+  return best ? best.project : null;
+}
+
+function findThemeLike(words) {
+  for (const [slug, keys] of Object.entries(THEME_WORDS)) {
+    const single = keys.filter((k) => !k.includes(" ") && k.length >= 4);
+    if (THEMES[slug] && likeAny(words, single)) return slug;
+  }
+  return null;
+}
+
+function interpretWords(t) {
+  const words = t.split(" ").filter((w) => w.length >= 2);
+  if (!words.length) return null;
+  // «A ver este»: Chrome a veces escribe así «abrí este»
+  if (/^a ver (este|esta|ese|esa)$/.test(t)) return { type: "open", which: "this" };
+  const found = WORD_ORDERS.find(([, keys]) => likeAny(words, keys));
+  const order = found ? found[0] : null;
+  const theme = findThemeLike(words);
+  switch (order) {
+    case "stop":
+    case "thanks":
+    case "close":
+    case "newTab":
+    case "help":
+    case "themes":
+    case "hello":
+    case "program":
+      return { type: order };
+    case "closeWork":
+      return { type: "closeWork", plain: false };
+    case "open": {
+      const project = findProjectLike(words);
+      if (project) return { type: "open", project };
+      const index = findOrdinal(t);
+      return index ? { type: "open", index } : { type: "open", which: "this" };
+    }
+    case "next":
+      return { type: "page", dir: 1 };
+    case "prev":
+      return { type: "page", dir: -1 };
+    case "tour":
+      return { type: "tour", theme };
+    case "read":
+      return { type: "read", selection: false };
+    case "bigger":
+      return { type: "size", dir: 1 };
+    case "smaller":
+      return { type: "size", dir: -1 };
+    case "contrast":
+    case "font":
+    case "links":
+    case "pause":
+      return { type: "toggle", key: order, value: null };
+    default:
+      break;
+  }
+  // Solo el nombre de un trabajo («Pixel Quest») o de una temática («robótica»)
+  const project = findProjectLike(words);
+  if (project) return { type: "open", project };
+  if (theme) return { type: "go", to: `/tematicas/${theme}`, label: `a ${THEMES[theme].name}` };
+  return null;
 }
