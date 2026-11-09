@@ -1029,6 +1029,9 @@ function Assistant() {
 
   useEffect(() => {
     if (!micMode) return;
+    // Escucha nueva: lo que se oyó en la anterior ya no cuenta
+    segs.current.clear();
+    dropHold();
     const stop =
       micMode === "wake"
         ? listenForWakeWord({

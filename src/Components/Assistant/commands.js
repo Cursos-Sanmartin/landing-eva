@@ -189,10 +189,10 @@ export function interpret(raw) {
 
   // «Contame de qué trata el programa», «¿qué es EVA?»: recorrido por la sección del programa
   if (
-    (/(de que (se )?trata|que es|en que consiste|como funciona|como es|conta|contame|contas|explica|explicame|hablame|decime)/.test(
+    (/(^| )(de que (se )?trata|que es|en que consiste|como funciona|como es|conta|contame|contas|contanos|explica|explicame|explicanos|hablame|decime)( |$)/.test(
       t,
     ) &&
-      /(programa|eva|curso|cursos|la propuesta|las unidades|los pasos)/.test(t)) ||
+      /(^| )(programa|eva|curso|cursos|la propuesta|las unidades|los pasos)( |$)/.test(t)) ||
     /^(de que (se )?trata( esto)?|que es esto|que es esta pagina)$/.test(t)
   ) {
     return { type: "program" };

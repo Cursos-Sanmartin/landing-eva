@@ -279,6 +279,10 @@ export function speak(text, { onEnd } = {}) {
 
 // ---------- Escuchar ----------
 
+// Cada escucha de Chrome tiene su número, único en toda la visita: así las frases de una escucha
+// nueva nunca se confunden con las de una anterior (antes se repetían y Eva dejaba de entender)
+let sessions = 0;
+
 // Escucha de fondo, sin cortar (como «Ok Google»). Chrome corta la escucha cada tanto,
 // así que la volvemos a prender sola. Devuelve una función para apagarla.
 // match(texto, esFinal, momento, clave): se llama con cada cosa que va entendiendo; la clave
@@ -295,13 +299,12 @@ export function listenForWakeWord({ match, onWake, onReady, onFatal }) {
   let retries = 0;
   let startedAt = 0;
   let announced = false;
-  let session = 0;
 
   const startOne = () => {
     if (stopped) return;
     rec = new Recognition();
-    session += 1;
-    const mySession = session;
+    sessions += 1;
+    const mySession = sessions;
     rec.lang = "es-AR";
     rec.continuous = true;
     rec.interimResults = true;
