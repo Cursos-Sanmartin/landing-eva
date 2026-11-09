@@ -708,3 +708,10 @@ html.eva-a11y-contrast .eva-chip {
 .eva-compact-stop {
   margin-top: 0.45rem;
 }
+
+.eva-hint {
+  margin: 0.4rem 0 0;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--muted);
+}

@@ -117,7 +117,7 @@ export function listen({ onPartial, onEnd }) {
 }
 
 // Escucha de fondo hasta oír la frase para llamar a Eva (como «Ok Google»).
-// match(texto) decide si lo que oyó es la frase. Chrome corta la escucha cada tanto,
+// match(texto, esFinal, momento) decide si lo que oyó es la frase. Chrome corta la escucha cada tanto,
 // así que la volvemos a prender sola. Devuelve una función para apagarla.
 // onReady: el micrófono quedó escuchando. onFatal(error): no se puede escuchar (sin permiso, sin micrófono).
 export function listenForWakeWord({ match, onWake, onReady, onFatal }) {
@@ -149,7 +149,7 @@ export function listenForWakeWord({ match, onWake, onReady, onFatal }) {
     rec.onresult = (e) => {
       retries = 0;
       for (let i = e.resultIndex; i < e.results.length; i++) {
-        if (match(e.results[i][0].transcript)) {
+        if (match(e.results[i][0].transcript, e.results[i].isFinal, e.timeStamp)) {
           stopped = true;
           try {
             rec.abort();

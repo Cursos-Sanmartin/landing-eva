@@ -12,7 +12,7 @@ import {
   readableBlocks,
   saveSettings,
 } from "./accessibility";
-import { THEME_NAMES, WAKE_PHRASE, interpret, isWakePhrase } from "./commands";
+import { THEME_NAMES, WAKE_PHRASE, interpret, isWakePhrase, normalize } from "./commands";
 import { onOpenRequest, onWakeToggledByUser, setWakeEnabled, setWakeLive, useWakeEnabled } from "./assistantStore";
 import {
   cardName,
@@ -115,6 +115,7 @@ function Assistant() {
   const [thinking, setThinking] = useState(false);
   const [reading, setReading] = useState(false);
   const [toast, setToast] = useState("");
+  const [usedVoice, setUsedVoice] = useState(false);
   const systemReduced = useSyncExternalStore(subscribeMotion, getMotion, () => false);
   const visible = useSyncExternalStore(subscribeVisibility, getVisible, () => true);
   const wakeEnabled = useWakeEnabled();
@@ -138,6 +139,7 @@ function Assistant() {
   const toastTimer = useRef(0);
   const readQueue = useRef({ list: [], i: 0, node: null, after: null });
   const lastCard = useRef(null);
+  const recentSpeech = useRef([]);
   const greeted = useRef(false);
 
   // Aplicar y recordar los ajustes
@@ -235,24 +237,68 @@ function Assistant() {
       return;
     }
     const block = queue.list[queue.i];
+    const first = queue.i === 0;
     queue.i += 1;
-    if (block.log) addMessage("eva", block.text);
-    if (block.node) {
-      block.node.classList.add("eva-reading");
-      block.node.scrollIntoView({ block: "center", behavior: reducedRef.current ? "auto" : "smooth" });
-      queue.node = block.node;
-      // «abrí este» abre el último trabajo que se nombró
-      const card = block.node.closest?.(".project-card");
-      if (card) lastCard.current = card;
-    }
     speakId.current += 1;
     const id = speakId.current;
     setSpeaking(true);
-    speak(block.text, {
-      onEnd: () => {
-        if (speakId.current === id) readNext();
-      },
-    });
+
+    const go = () => {
+      if (speakId.current !== id) return;
+      if (block.log) addMessage("eva", block.text);
+      if (block.node) {
+        block.node.classList.add("eva-reading");
+        block.node.scrollIntoView({ block: "center", behavior: reducedRef.current ? "auto" : "smooth" });
+        queue.node = block.node;
+        // «abrí este» abre el trabajo que está contando
+        const card = block.node.closest?.(".project-card");
+        if (card) {
+          queue.prevCard = queue.currentCard || null;
+          queue.currentCard = card;
+          queue.cardAt = performance.now();
+          lastCard.current = card;
+        }
+      }
+      rememberSpeech(block.text);
+      speak(block.text, {
+        onEnd: () => {
+          if (speakId.current === id) readNext();
+        },
+      });
+    };
+    // En el recorrido deja un respiro entre proyecto y proyecto, para que se la pueda interrumpir
+    if (queue.gap && !first) window.setTimeout(go, queue.gap);
+    else go();
+  }
+
+  // Lo último que dijo Eva, para no confundir su propia voz con un pedido
+  function rememberSpeech(text) {
+    recentSpeech.current = [...recentSpeech.current.slice(-1), normalize(text)];
+  }
+
+  function isEcho(t) {
+    const heard = new Set(recentSpeech.current.join(" ").split(" "));
+    const words = t.split(" ").filter(Boolean);
+    if (!words.length) return true;
+    const repeated = words.filter((w) => heard.has(w)).length;
+    return repeated / words.length >= 0.75;
+  }
+
+  // «Abrí este» justo cuando ya empezó el siguiente: se refiere al anterior
+  function tourCard(now) {
+    const queue = readQueue.current;
+    if (queue.prevCard?.isConnected && now - (queue.cardAt || 0) < 1800) return queue.prevCard;
+    return queue.currentCard?.isConnected ? queue.currentCard : null;
+  }
+
+  // «Siguiente» / «anterior» durante el recorrido: saltea o vuelve un proyecto
+  function skipTour(dir) {
+    const queue = readQueue.current;
+    if (!queue.list.length) return;
+    if (dir < 0) queue.i = Math.max(1, queue.i - 2);
+    speakId.current += 1;
+    stopSpeaking();
+    readNext();
   }
 
   function selectedText() {
@@ -314,7 +360,12 @@ function Assistant() {
       outro = "¿A cuál querés entrar? Decime, por ejemplo, «llevame a robótica» o «entrá a la primera».";
     }
     list.push({ text: outro, log: true });
-    readQueue.current = { list, i: 0, node: null, after: followUp };
+    const canTalk =
+      canListen && (wakeEnabled || settingsRef.current.mode === "voz" || usedVoice || voiceSession.current);
+    const after = () => {
+      if (canTalk || voiceSession.current) startListening({ followUp: true });
+    };
+    readQueue.current = { list, i: 0, node: null, after, gap: 450, currentCard: null, prevCard: null, cardAt: 0 };
     setReading("tour");
     readNext();
   }
@@ -323,7 +374,9 @@ function Assistant() {
 
   async function openWork(intent) {
     let card;
-    if (intent.project) {
+    if (intent.card) {
+      card = intent.card;
+    } else if (intent.project) {
       card = findCardByName(intent.project.name);
       if (!card) {
         navigate(`/tematicas/${intent.project.theme}`);
@@ -420,6 +473,7 @@ function Assistant() {
     const token = listenToken.current;
     setInput("");
     setListening(true);
+    setUsedVoice(true);
 
     const begin = () => {
       if (listenToken.current !== token) return;
@@ -443,14 +497,14 @@ function Assistant() {
             );
             return;
           }
-          if (isFollowUp && voiceSession.current) {
+          if (isFollowUp) {
             // Con un trabajo abierto sigue escuchando, para poder cerrarlo o pasar de página
             if (openViewer() && (!error || error === "no-speech")) {
               startListening({ followUp: true });
               return;
             }
             // Llamada por voz y no dijo nada más: se va, como Hey Google
-            closePanel();
+            if (voiceSession.current) closePanel();
             return;
           }
           say("No te escuché. Tocá el micrófono y hablame cuando quieras.");
@@ -669,9 +723,14 @@ function Assistant() {
 
   // ---------- Escuchar la frase de fondo ----------
 
-  // También escucha mientras lee o recorre, para que «Eva, ¿estás ahí?» la pueda interrumpir
-  const wakeActive =
-    wakeEnabled && canListen && visible && !listening && !thinking && (!speaking || Boolean(reading));
+  // Qué escucha el micrófono de fondo:
+  // "wake": solo la frase para llamarla (con «Eva por voz» prendido).
+  // "barge": mientras lee o recorre, pedidos como «abrí este», «siguiente» o «basta».
+  let micMode = null;
+  if (canListen && visible && !listening && !thinking) {
+    if (reading) micMode = wakeEnabled || settings.mode === "voz" || usedVoice ? "barge" : null;
+    else if (wakeEnabled && !speaking) micMode = "wake";
+  }
 
   const onWake = useEffectEvent(() => summon());
   const onWakeReady = useEffectEvent(() => {
@@ -687,21 +746,61 @@ function Assistant() {
     showToast(WAKE_ERRORS[error] || WAKE_ERRORS["not-allowed"]);
   });
 
+  // Pedidos durante el recorrido o la lectura. Devuelve true si hay que cortar la escucha.
+  const onBarge = useEffectEvent((raw, isFinal, heardAt) => {
+    if (isWakePhrase(raw)) {
+      summon();
+      return true;
+    }
+    if (!isFinal) return false;
+    let t = normalize(raw);
+    // «Eva, …» siempre es para ella; si no, descartamos lo que coincide con lo que ella está diciendo
+    const addressed = /^(eva|asistente) /.test(t);
+    if (addressed) t = t.replace(/^(eva|asistente) /, "");
+    else if (isEcho(t)) return false;
+    const intent = interpret(t);
+    if (intent.type === "unknown" || intent.type === "empty" || intent.type === "hello") return false;
+    if (!addressed && !["open", "stop", "page"].includes(intent.type)) return false;
+
+    voiceSession.current = true;
+    if (intent.type === "page" && reading === "tour") {
+      skipTour(intent.dir);
+      return false; // sigue recorriendo y escuchando
+    }
+    addMessage("user", raw.trim());
+    if (intent.type === "open" && intent.which === "this") {
+      const card = tourCard(heardAt);
+      stopAll();
+      openWork(card ? { card } : intent);
+      return true;
+    }
+    stopAll();
+    if (intent.type === "stop") say("Listo, freno.");
+    else runIntent(intent);
+    return true;
+  });
+
   useEffect(() => {
-    if (!wakeActive) return;
-    const stop = listenForWakeWord({
-      match: isWakePhrase,
-      onWake: () => onWake(),
-      onReady: () => onWakeReady(),
-      onFatal: (error) => onWakeFatal(error),
-    });
+    if (!micMode) return;
+    const stop =
+      micMode === "wake"
+        ? listenForWakeWord({
+            match: isWakePhrase,
+            onWake: () => onWake(),
+            onReady: () => onWakeReady(),
+            onFatal: (error) => onWakeFatal(error),
+          })
+        : listenForWakeWord({
+            match: (text, isFinal, heardAt) => onBarge(text, isFinal, heardAt),
+            onReady: () => setWakeLive(true),
+          });
     wakeStop.current = stop;
     return () => {
       stop();
       if (wakeStop.current === stop) wakeStop.current = null;
       setWakeLive(false);
     };
-  }, [wakeActive]);
+  }, [micMode]);
 
   // Interruptor del header y pedidos de abrir desde afuera
   const onUserToggle = useEffectEvent((value) => {
@@ -801,6 +900,9 @@ function Assistant() {
                 <button type="button" className="eva-chip eva-chip-stop eva-compact-stop" onClick={stopAll}>
                   Detener
                 </button>
+              )}
+              {micMode === "barge" && reading === "tour" && (
+                <p className="eva-hint">Podés decir «abrí este», «siguiente» o «basta».</p>
               )}
             </div>
             <button type="button" className="eva-icon-btn" onClick={closePanel} aria-label="Cerrar asistente">
