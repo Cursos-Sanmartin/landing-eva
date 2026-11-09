@@ -120,7 +120,12 @@ export function isWakePhrase(raw) {
 export function interpret(raw) {
   const intent = interpretPhrase(raw);
   if (intent.type !== "unknown") return intent;
-  return interpretWords(normalize(raw)) || intent;
+  // Las preguntas («¿quiénes hicieron…?», «¿cuántos…?») las contesta la IA, no se adivinan por palabras
+  const t = normalize(raw);
+  if (/^(y )?(que|quien|quienes|cuanto|cuantos|cuantas|cual|cuales|donde|como|cuando|por que|para que)( |$)/.test(t)) {
+    return intent;
+  }
+  return interpretWords(t) || intent;
 }
 
 function interpretPhrase(raw) {
@@ -207,10 +212,13 @@ function interpretPhrase(raw) {
   }
 
   // Pasar de página dentro de un trabajo abierto
+  // item: pidió otro trabajo («el siguiente proyecto»); sheet: otra página del documento («pasá la página»)
+  const item = /(proyecto|trabajo)/.test(t);
+  const sheet = /(pagina|hoja)/.test(t) && !item;
   if (/(siguiente|proxima|proximo|el que sigue|otro|pasa la pagina|pasa de pagina|adelante)/.test(t)) {
-    return { type: "page", dir: 1 };
+    return { type: "page", dir: 1, item, sheet };
   }
-  if (/(anterior|volve una pagina|para atras|atras|el de antes)/.test(t)) return { type: "page", dir: -1 };
+  if (/(anterior|volve una pagina|para atras|atras|el de antes)/.test(t)) return { type: "page", dir: -1, item, sheet };
 
   // Abrir un trabajo: por nombre, por número o «este»
   if (hasAny(t, OPEN_WORDS) || hasAny(t, ["este", "esta"])) {
@@ -241,6 +249,7 @@ function interpretPhrase(raw) {
   // «Muchas gracias por la ayuda» es para despedirse, no un pedido de ayuda
   if (t.includes("gracias")) return { type: "thanks" };
   if (/(ayuda|que podes|que sabes|que haces|como funciona|opciones|que puedo)/.test(t)) return { type: "help" };
+  if (/(como estas|como andas|como te va|como va|todo bien|que tal estas)/.test(t)) return { type: "howareyou" };
   if (hasAny(t, ["hola", "buenas", "buen dia", "buenas tardes", "buenas noches", "que tal"])) return { type: "hello" };
   return { type: "unknown" };
 }

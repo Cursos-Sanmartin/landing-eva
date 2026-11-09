@@ -36,6 +36,7 @@ import {
   withoutEcho,
 } from "./commands";
 import { onOpenRequest, onWakeToggledByUser, setWakeEnabled, setWakeLive, useWakeEnabled } from "./assistantStore";
+import { askAI, siteFacts } from "./ai";
 import {
   cardName,
   closeOpenViewer,
@@ -189,6 +190,8 @@ function Assistant() {
   const greeted = useRef(false);
   const webRef = useRef(null);
   const webLinkRef = useRef(null);
+  const aiToken = useRef(0);
+  const facts = useRef(null);
 
   // Aplicar y recordar los ajustes
   useEffect(() => {
@@ -270,9 +273,17 @@ function Assistant() {
     readQueue.current.node = null;
   }
 
+  // Antes de recorrer o leer, cierra el trabajo o la página que esté abierta
+  function closeOthers() {
+    showWeb(null);
+    closeOpenViewer();
+  }
+
   function stopAll() {
     hush();
     dropHold();
+    aiToken.current += 1;
+    setThinking(false);
     window.clearTimeout(waitTimer.current);
     clearReadingMark();
     readQueue.current = { list: [], i: 0, node: null, after: null };
@@ -400,7 +411,6 @@ function Assistant() {
 
   // Lo que le pidieron con la lectura en pausa
   function handlePausedCommand(raw) {
-    const queue = readQueue.current;
     const t = normalize(raw);
     addMessage("user", raw.trim());
     // «Pará un momento», «esperá»: solo quiere que espere
@@ -416,16 +426,45 @@ function Assistant() {
       return;
     }
     if (!known) {
-      misses.current += 1;
-      if (misses.current >= 3) {
-        misses.current = 0;
-        say("Perdón, no te entendí. Sigo.", () => resumeReading(0));
-        return;
-      }
-      say(lastByVoice.current ? SORRY_VOICE : SORRY_TEXT, waitInPause);
+      // Antes de pedir que repita, le pregunta a la IA
+      window.clearTimeout(waitTimer.current);
+      setThinking(true);
+      aiToken.current += 1;
+      const token = aiToken.current;
+      askAI(raw, aiContext()).then((ai) => {
+        if (aiToken.current !== token) return;
+        setThinking(false);
+        if (!readQueue.current.paused) return;
+        if (ai) routePaused(ai);
+        else sorryInPause();
+      });
       return;
     }
+    routePaused(intent);
+  }
+
+  function sorryInPause() {
+    misses.current += 1;
+    if (misses.current >= 3) {
+      misses.current = 0;
+      say("Perdón, no te entendí. Sigo.", () => resumeReading(0));
+      return;
+    }
+    say(lastByVoice.current ? SORRY_VOICE : SORRY_TEXT, waitInPause);
+  }
+
+  // Hace el pedido que llegó con la lectura en pausa
+  function routePaused(intent) {
+    const queue = readQueue.current;
     misses.current = 0;
+    if (intent.type === "resume") {
+      resumeReading(0);
+      return;
+    }
+    if (intent.type === "hello") {
+      say("¿Sí? Decime.", waitInPause);
+      return;
+    }
     if (intent.type === "page") {
       resumeReading(intent.dir);
       return;
@@ -454,6 +493,7 @@ function Assistant() {
 
   function startReading(useSelection) {
     stopAll();
+    closeOthers();
     const picked = useSelection ? selectedText() : "";
     const list = picked ? [{ node: null, text: picked }] : readableBlocks();
     if (!list.length) {
@@ -470,6 +510,7 @@ function Assistant() {
 
   async function startTour(slug) {
     stopAll();
+    closeOthers();
     if (slug && slug !== currentThemeSlug()) {
       navigate(`/tematicas/${slug}`);
       await waitFor(() => currentThemeSlug() === slug && projectCards().length > 0, 2000);
@@ -566,6 +607,9 @@ function Assistant() {
       }
     }
 
+    // Primero cierra lo que esté abierto, así queda uno solo
+    showWeb(null);
+    closeOpenViewer();
     lastCard.current = card;
     card.scrollIntoView({ block: "center", behavior: reducedRef.current ? "auto" : "smooth" });
     const name = cardName(card);
@@ -610,12 +654,45 @@ function Assistant() {
     say("No hay ningún trabajo abierto.");
   }
 
-  function turnWorkPage(dir) {
-    const { result } = turnViewerPage(dir);
-    if (result === "none") say("No hay ningún trabajo abierto.");
-    else if (result === "single") say("Este trabajo tiene una sola página.");
-    else if (result === "edge") say(dir > 0 ? "Ya estás en la última página." : "Ya estás en la primera página.");
-    else say(DONE);
+  // «Siguiente» / «anterior». Con un documento abierto pasa de página; si pide «el siguiente proyecto»,
+  // si hay una página web abierta o si el documento ya terminó, abre el trabajo que sigue.
+  function handlePage(intent) {
+    if (!intent.item && openViewer()) {
+      const { result } = turnViewerPage(intent.dir);
+      if (result === "ok") {
+        say(DONE);
+        return;
+      }
+      if (intent.sheet) {
+        if (result === "single") say("Este trabajo tiene una sola página.");
+        else say(intent.dir > 0 ? "Ya estás en la última página." : "Ya estás en la primera página.");
+        return;
+      }
+    }
+    nextProject(intent.dir);
+  }
+
+  function nextProject(dir) {
+    const cards = projectCards();
+    if (!cards.length) {
+      say("En esta página no hay trabajos. Pedime, por ejemplo, «llevame a robótica».");
+      return;
+    }
+    // El trabajo de referencia: el que está abierto, o el último que abrió o contó Eva
+    const current = openViewer()?.closest(".project-card") || (lastCard.current?.isConnected ? lastCard.current : null);
+    const at = current ? cards.indexOf(current) : -1;
+    const i = at < 0 ? (dir > 0 ? 0 : cards.length - 1) : at + dir;
+    if (i >= cards.length) {
+      say("Ese era el último trabajo de esta página. ¿En qué más te puedo ayudar?");
+      return;
+    }
+    if (i < 0) {
+      say("Ese era el primer trabajo de esta página. ¿En qué más te puedo ayudar?");
+      return;
+    }
+    showWeb(null);
+    closeOpenViewer();
+    openWork({ card: cards[i] });
   }
 
   // ---------- «Contame de qué trata el programa» ----------
@@ -624,6 +701,7 @@ function Assistant() {
 
   async function startProgramTour() {
     stopAll();
+    closeOthers();
     if (!document.querySelector("#programa .step")) {
       navigate("/#programa");
       await waitFor(() => document.querySelector("#programa .step"), 2500);
@@ -768,6 +846,17 @@ function Assistant() {
     }
     setThinking(true);
     window.clearTimeout(thinkTimer.current);
+    aiToken.current += 1;
+    const token = aiToken.current;
+    // No entendió sola: le pregunta a la IA (si no hay IA, pide que repitan)
+    if (intent.type === "unknown") {
+      askAI(text, aiContext()).then((ai) => {
+        if (aiToken.current !== token) return;
+        setThinking(false);
+        runIntent(ai || intent);
+      });
+      return;
+    }
     thinkTimer.current = window.setTimeout(
       () => {
         setThinking(false);
@@ -775,6 +864,23 @@ function Assistant() {
       },
       reducedRef.current ? 120 : 450,
     );
+  }
+
+  // Lo que la IA necesita saber para entender el pedido
+  function aiContext() {
+    facts.current = facts.current || siteFacts(ABOUT);
+    const here = currentThemeSlug();
+    let page = window.location.pathname;
+    if (here) page = `temática ${THEMES[here]?.name || here}`;
+    else if (page === "/") page = "inicio";
+    return {
+      ...facts.current,
+      units: Array.from(document.querySelectorAll("#programa .step h3"), (h) => h.textContent.trim()),
+      page,
+      projectsHere: projectCards().map(cardName),
+      openWork: Boolean(webRef.current || openViewer()),
+      paused: Boolean(readQueue.current.paused),
+    };
   }
 
   function setSetting(key, value) {
@@ -798,7 +904,7 @@ function Assistant() {
         closeWork(intent.plain);
         break;
       case "page":
-        turnWorkPage(intent.dir);
+        handlePage(intent);
         break;
       case "open":
         openWork(intent);
@@ -872,9 +978,18 @@ function Assistant() {
       case "hello":
         say(HELLO);
         break;
+      case "howareyou":
+        say("¡Muy bien, gracias! ¿En qué puedo ayudarte?");
+        break;
       // «Muchas gracias por la ayuda»: se despide
       case "thanks":
         say(THANKS_BYE, () => closePanel());
+        break;
+      case "answer":
+        say(intent.text);
+        break;
+      case "resume":
+        say(DONE);
         break;
       case "empty":
         break;
@@ -972,6 +1087,7 @@ function Assistant() {
 
   function closePanel() {
     stopAll();
+    aiToken.current += 1;
     showWeb(null);
     setOpen(false);
     setMicOn(false);
