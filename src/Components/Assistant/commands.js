@@ -92,8 +92,11 @@ function findOrdinal(t) {
   return match ? Number(match[3]) : null;
 }
 
-const OPEN_WORDS = ["abri", "abrime", "abrilo", "abrila", "abrir", "abre", "mostrame", "quiero ver", "ver", "entra a", "entra en", "entrar a"];
-const THIS_WORDS = ["este", "esta", "ese", "esa", "abrilo", "abrila"];
+const OPEN_WORDS = [
+  "abri", "abrime", "abrilo", "abrila", "abrir", "abre", "abris", "abras", "abrirlo", "abrirla", "abrimelo",
+  "abrimela", "mostrame", "mostrar", "mostrarme", "mostras", "quiero ver", "ver", "entra a", "entra en", "entrar a",
+];
+const THIS_WORDS = ["este", "esta", "ese", "esa", "abrilo", "abrila", "abrirlo", "abrirla", "abrimelo", "abrimela"];
 
 // ---------- Frase para llamar a Eva ----------
 
@@ -113,10 +116,16 @@ export function isWakePhrase(raw) {
 // ---------- Interpretar un pedido ----------
 
 export function interpret(raw) {
-  const t = normalize(raw);
+  let t = normalize(raw);
   if (!t) return { type: "empty" };
   // Si repite «Eva, ¿estás ahí?» cuando ya está abierta, solo saluda
   if (WAKE_PATTERNS.some((pattern) => pattern.test(t))) return { type: "hello" };
+  // Muletillas y cortesía: «che, ¿me podés abrir este, por favor?» → «abrir este»
+  const plain = t
+    .replace(/^((eva|asistente|che|bueno|ok|okey|dale|a ver|porfa|por favor|perdon|disculpa|oye|escucha|escuchame) )+/, "")
+    .replace(/( (por favor|porfa))+$/, "")
+    .replace(/^(me )?(podes|podrias|puedes|queres|quisiera|necesito que|quiero que) (me )?/, "");
+  if (plain) t = plain;
   const turnOff = hasAny(t, ["saca", "sacale", "sacalo", "quita", "quitale", "desactiva", "apaga", "sin"]);
   const turnOn = hasAny(t, ["activa", "pone", "poneme", "prende", "usa", "quiero"]);
   // true / false si lo pidió explícito; null = cambiar al otro estado
@@ -133,7 +142,7 @@ export function interpret(raw) {
     return { type: "close" };
   }
   // «cerrá» cierra el trabajo abierto; si no hay ninguno, cierra a Eva
-  if (/(^| )(cerra|cerralo|cerrala|cerrar|sali|salir)( |$)/.test(t)) {
+  if (/(^| )(cerra|cerralo|cerrala|cerrar|cerrarlo|cerrarla|cerras|sali|salir)( |$)/.test(t)) {
     return { type: "closeWork", plain: !/(trabajo|imagen|video|visor|documento|proyecto|lo|la)( |$)/.test(t) };
   }
   if (/(no hables|sin voz|mudo|sin sonido|solo texto|solo por escrito)/.test(t)) {
@@ -162,15 +171,20 @@ export function interpret(raw) {
 
   // Recorrido: baja por la página y cuenta los proyectos
   if (
-    /(navega|navegame|recorre|recorrido|paseo|mostrame la pagina)/.test(t) ||
-    /(que|cuales son los|contame los|contame que|mostrame los) (proyectos|trabajos)/.test(t)
+    /(navega|navegame|recorre|recorrido|paseo|mostrame la pagina|describi)/.test(t) ||
+    /(que|cuales son los|contame los|contame que|mostrame los) (proyectos|trabajos)/.test(t) ||
+    (/(proyectos|trabajos)/.test(t) &&
+      /(^| )(conta|contas|contame|contar|contarme|decime|deci|decirme|nombrame|listame|mostrame|mostrar|mostrarme|ver|hay)( |$)/.test(t)) ||
+    /(^| )que hay (aca|aqui|en esta pagina|en la pagina|para ver)( |$)/.test(t)
   ) {
     return { type: "tour", theme: findTheme(t) };
   }
 
   // Pasar de página dentro de un trabajo abierto
-  if (/(siguiente|proxima|pasa la pagina|pasa de pagina|adelante)/.test(t)) return { type: "page", dir: 1 };
-  if (/(anterior|volve una pagina|para atras|atras)/.test(t)) return { type: "page", dir: -1 };
+  if (/(siguiente|proxima|proximo|el que sigue|otro|pasa la pagina|pasa de pagina|adelante)/.test(t)) {
+    return { type: "page", dir: 1 };
+  }
+  if (/(anterior|volve una pagina|para atras|atras|el de antes)/.test(t)) return { type: "page", dir: -1 };
 
   // Abrir un trabajo: por nombre, por número o «este»
   if (hasAny(t, OPEN_WORDS) || hasAny(t, ["este", "esta"])) {
@@ -178,7 +192,14 @@ export function interpret(raw) {
     if (project) return { type: "open", project };
     const index = findOrdinal(t);
     if (index) return { type: "open", index };
-    if (hasAny(t, THIS_WORDS) || /(^| )(el|un) (trabajo|proyecto)( |$)/.test(t)) return { type: "open", which: "this" };
+    if (
+      hasAny(t, THIS_WORDS) ||
+      /(^| )(el|un) (trabajo|proyecto)( |$)/.test(t) ||
+      /(^| )(lo|la) (abris|abras|abrir|abri)( |$)/.test(t) ||
+      /(^| )el que (me )?(estas|esta|estabas) (contando|nombrando|diciendo)( |$)/.test(t)
+    ) {
+      return { type: "open", which: "this" };
+    }
   }
 
   if (/(que tematicas|cuales son las tematicas|que cursos|que temas|lista de tematicas|que tematica hay)/.test(t)) {
@@ -212,14 +233,25 @@ const ATTENTION_WORDS = new Set(
     "espera segui cerra volve atras che hola momento perdon escucha escuchame oye mostrame").split(" "),
 );
 
-// Mira las últimas palabras que oyó el micrófono y descarta las que Eva acaba de decir.
-// Si quedan dos palabras nuevas (o una que llama la atención), la persona le está hablando encima.
-export function isTalkingOver(t, spokenTexts) {
+// ¿Esta palabra la dijo la persona? (no la acaba de decir Eva, ni es un número leído en voz alta)
+function freshWords(spokenTexts) {
   const known = new Set(spokenTexts.join(" ").split(" ").filter(Boolean));
   const stems = new Set([...known].filter((w) => w.length >= 4).map((w) => w.slice(0, 4)));
-  const tail = t.split(" ").filter(Boolean).slice(-4);
-  const fresh = tail.filter(
-    (w) => w.length >= 3 && !known.has(w) && !NUMBER_WORDS.has(w) && !stems.has(w.slice(0, 4)),
-  );
+  return (w) => w.length >= 3 && !known.has(w) && !NUMBER_WORDS.has(w) && !stems.has(w.slice(0, 4));
+}
+
+// Mira las últimas palabras que oyó el micrófono y descarta las que Eva acaba de decir.
+// Si quedan dos palabras nuevas (o una que llama la atención), la persona le está hablando.
+export function isTalkingOver(t, spokenTexts) {
+  const isFresh = freshWords(spokenTexts);
+  const fresh = t.split(" ").filter(Boolean).slice(-4).filter(isFresh);
   return fresh.length >= 2 || fresh.some((w) => ATTENTION_WORDS.has(w));
+}
+
+// Lo que dijo la persona: desde su primera palabra en adelante
+export function userPart(t, spokenTexts) {
+  const isFresh = freshWords(spokenTexts);
+  const words = t.split(" ").filter(Boolean);
+  const first = words.findIndex(isFresh);
+  return first < 0 ? "" : words.slice(first).join(" ");
 }

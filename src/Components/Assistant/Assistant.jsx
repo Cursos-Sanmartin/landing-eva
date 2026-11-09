@@ -12,7 +12,7 @@ import {
   readableBlocks,
   saveSettings,
 } from "./accessibility";
-import { THEME_NAMES, WAKE_PHRASE, interpret, isTalkingOver, isWakePhrase, normalize } from "./commands";
+import { THEME_NAMES, WAKE_PHRASE, interpret, isTalkingOver, isWakePhrase, normalize, userPart } from "./commands";
 import { onOpenRequest, onWakeToggledByUser, setWakeEnabled, setWakeLive, useWakeEnabled } from "./assistantStore";
 import {
   cardName,
@@ -117,6 +117,7 @@ function Assistant() {
   const [toast, setToast] = useState("");
   const [usedVoice, setUsedVoice] = useState(false);
   const [heard, setHeard] = useState("");
+  const [inGap, setInGap] = useState(false);
   const systemReduced = useSyncExternalStore(subscribeMotion, getMotion, () => false);
   const visible = useSyncExternalStore(subscribeVisibility, getVisible, () => true);
   const wakeEnabled = useWakeEnabled();
@@ -141,6 +142,7 @@ function Assistant() {
   const readQueue = useRef({ list: [], i: 0, node: null, after: null });
   const lastCard = useRef(null);
   const recentSpeech = useRef([]);
+  const holdTimer = useRef(0);
   const greeted = useRef(false);
 
   // Aplicar y recordar los ajustes
@@ -222,16 +224,19 @@ function Assistant() {
     readQueue.current = { list: [], i: 0, node: null, after: null };
     setSpeaking(false);
     setReading(false);
+    setInGap(false);
   }
 
   // ---------- Leer la página ----------
 
   function readNext() {
     const queue = readQueue.current;
-    clearReadingMark();
     if (queue.i >= queue.list.length) {
+      clearReadingMark();
       const after = queue.after;
       queue.after = null;
+      queue.inGap = false;
+      setInGap(false);
       setReading(false);
       setSpeaking(false);
       after?.();
@@ -246,6 +251,9 @@ function Assistant() {
 
     const go = () => {
       if (speakId.current !== id) return;
+      queue.inGap = false;
+      setInGap(false);
+      clearReadingMark();
       if (block.log) addMessage("eva", block.text);
       if (block.node) {
         block.node.classList.add("eva-reading");
@@ -267,9 +275,16 @@ function Assistant() {
         },
       });
     };
-    // En el recorrido deja un respiro entre proyecto y proyecto, para que se la pueda interrumpir
-    if (queue.gap && !first) window.setTimeout(go, queue.gap);
-    else go();
+    // Entre proyecto y proyecto hace una pausa para escuchar: mientras Eva habla,
+    // la compu suele silenciar el micrófono para no oírla, así que se turnan
+    if (queue.gap && !first && !queue.skipGap) {
+      queue.inGap = true;
+      setInGap(true);
+      window.setTimeout(go, queue.gap);
+    } else {
+      go();
+    }
+    queue.skipGap = false;
   }
 
   // Lo último que dijo Eva, para no confundir su propia voz con un pedido
@@ -279,38 +294,77 @@ function Assistant() {
 
   // ---------- Le hablan encima: frena, pide que repitan y escucha sin interferencias ----------
 
-  function interruptReading(heardAt) {
+  // Deja la lectura en pausa. queue.cur es «este»: lo que estaba contando o lo que acaba de contar
+  function pauseAtCurrent(heardAt) {
     const queue = readQueue.current;
-    if (!queue.list.length) return;
-    // queue.i pasa a ser lo que se retoma: lo que estaba diciendo
-    queue.i = Math.max(0, queue.i - 1);
+    queue.pausedInGap = Boolean(queue.inGap);
+    queue.cur = Math.max(0, queue.i - (queue.inGap ? 2 : 1));
     // Si recién había empezado otro proyecto, seguramente reaccionó al anterior
-    if (queue.kind === "tour" && queue.prevCard?.isConnected && heardAt - (queue.cardAt || 0) < 1200) {
+    if (!queue.inGap && queue.kind === "tour" && queue.prevCard?.isConnected && heardAt - (queue.cardAt || 0) < 1200) {
       clearReadingMark();
       queue.prevCard.classList.add("eva-reading");
       queue.node = queue.prevCard;
       queue.currentCard = queue.prevCard;
       lastCard.current = queue.prevCard;
-      queue.i = Math.max(1, queue.i - 1);
+      queue.cur = Math.max(1, queue.cur - 1);
+      queue.pausedInGap = true;
     }
     queue.paused = true;
+    queue.inGap = false;
+    setInGap(false);
     speakId.current += 1;
     stopSpeaking();
     voiceSession.current = true;
-    setReading("paused");
     setHeard("");
+  }
+
+  function askRepeat() {
+    setReading("paused");
     const ask = "¿Sí? Repetime, por favor.";
     addMessage("eva", ask);
     speakOut(ask, () => startListening({ pausedTour: true }));
   }
 
-  // Retoma desde lo que estaba diciendo (0), el siguiente (1) o el anterior (−1)
+  // Le hablaron encima mientras Eva hablaba: frena y pide que repitan
+  function interruptReading(heardAt) {
+    pauseAtCurrent(heardAt);
+    askRepeat();
+  }
+
+  // Le hablaron en la pausa: se queda callada esperando a que terminen la frase
+  function holdReading(heardAt, key) {
+    pauseAtCurrent(heardAt);
+    const queue = readQueue.current;
+    queue.holdKey = key;
+    setReading("holding");
+    window.clearTimeout(holdTimer.current);
+    holdTimer.current = window.setTimeout(() => {
+      if (readQueue.current.holdKey !== key) return;
+      readQueue.current.holdKey = null;
+      wakeStop.current?.();
+      wakeStop.current = null;
+      askRepeat();
+    }, 4000);
+  }
+
+  function finishHold(said) {
+    window.clearTimeout(holdTimer.current);
+    readQueue.current.holdKey = null;
+    setReading("paused");
+    if (said) handlePausedCommand(said);
+    else resumeReading(0);
+  }
+
+  // Retoma: «seguí» (0), el siguiente (1) o el anterior (−1)
   function resumeReading(dir) {
     const queue = readQueue.current;
     if (!queue.paused) return;
     queue.paused = false;
-    if (dir > 0) queue.i += 1;
-    if (dir < 0) queue.i = Math.max(queue.kind === "tour" ? 1 : 0, queue.i - 1);
+    const first = queue.kind === "tour" ? 1 : 0;
+    if (dir > 0) queue.i = queue.cur + 1;
+    else if (dir < 0) queue.i = Math.max(first, queue.cur - 1);
+    else queue.i = queue.pausedInGap ? queue.cur + 1 : queue.cur;
+    queue.skipGap = true; // al retomar arranca enseguida
     setReading(queue.kind || "tour");
     readNext();
   }
@@ -319,11 +373,17 @@ function Assistant() {
   function handlePausedCommand(raw) {
     const queue = readQueue.current;
     addMessage("user", raw.trim());
-    if (/(^| )(segui|seguir|sigue|continua|continuar|dale|nada|perdon|disculpa)( |$)/.test(normalize(raw))) {
+    if (/(^| )(segui|seguir|continua|continuar|dale|nada|perdon|disculpa|no nada)( |$)/.test(normalize(raw))) {
       resumeReading(0);
       return;
     }
     const intent = interpret(raw);
+    // «Che», «escuchame», «esperá»: solo le pidió atención
+    const attention = /^((che|eva|asistente|escucha|escuchame|oye|ey|eh|espera|esperame|un momento|momento|hola) ?)+$/;
+    if (intent.type === "hello" || attention.test(normalize(raw))) {
+      say("¿Sí? Decime.", () => startListening({ pausedTour: true }));
+      return;
+    }
     if (intent.type === "page") {
       resumeReading(intent.dir);
       return;
@@ -357,7 +417,7 @@ function Assistant() {
       say("No encontré texto para leer en esta página.");
       return;
     }
-    readQueue.current = { list, i: 0, node: null, after: null, kind: "page" };
+    readQueue.current = { list, i: 0, node: null, after: null, kind: "page", gap: 800 };
     setReading("page");
     readNext();
   }
@@ -416,7 +476,7 @@ function Assistant() {
       node: null,
       after,
       kind: "tour",
-      gap: 450,
+      gap: 1600,
       currentCard: null,
       prevCard: null,
       cardAt: 0,
@@ -795,7 +855,7 @@ function Assistant() {
   let micMode = null;
   if (canListen && visible && !listening && !thinking) {
     // Mientras lee o recorre escucha, salvo que la persona haya elegido comunicarse escribiendo
-    if (reading === "tour" || reading === "page") {
+    if (reading === "tour" || reading === "page" || reading === "holding") {
       micMode = settings.mode !== "texto" || wakeEnabled || usedVoice ? "barge" : null;
     }
     else if (wakeEnabled && !speaking) micMode = "wake";
@@ -816,13 +876,28 @@ function Assistant() {
   });
 
   // Pedidos durante el recorrido o la lectura. Devuelve true si hay que cortar la escucha.
-  // Mientras lee o recorre: si la persona le habla encima, frena y le pide que repita
-  const onBarge = useEffectEvent((raw, isFinal, heardAt) => {
+  // Mientras lee o recorre. Devuelve true para cortar la escucha de fondo.
+  const onBarge = useEffectEvent((raw, isFinal, heardAt, key) => {
     const t = normalize(raw);
     if (t) setHeard(t.split(" ").slice(-10).join(" "));
-    if (!isWakePhrase(raw) && !isTalkingOver(t, recentSpeech.current)) return false;
-    interruptReading(heardAt);
-    return true;
+    const queue = readQueue.current;
+    if (!queue.holdKey) {
+      if (!isWakePhrase(raw) && !isTalkingOver(t, recentSpeech.current)) return false;
+      // Le habló encima mientras ella hablaba: frena y pide que repita
+      if (!queue.inGap) {
+        interruptReading(heardAt);
+        return true;
+      }
+      // Le habló en la pausa: espera a que termine la frase y lo hace
+      holdReading(heardAt, key);
+    }
+    if (!isFinal) return false;
+    const said = userPart(t, recentSpeech.current);
+    if (!said && key !== queue.holdKey) return false;
+    finishHold(said);
+    // Si retomó la lectura, la escucha de fondo sigue; si no, se corta
+    const resumed = readQueue.current.list.length > 0 && !readQueue.current.paused;
+    return !resumed;
   });
 
   useEffect(() => {
@@ -836,7 +911,7 @@ function Assistant() {
             onFatal: (error) => onWakeFatal(error),
           })
         : listenForWakeWord({
-            match: (text, isFinal, heardAt) => onBarge(text, isFinal, heardAt),
+            match: (text, isFinal, heardAt, key) => onBarge(text, isFinal, heardAt, key),
             onReady: () => setWakeLive(true),
             onFatal: (error) => showToast(WAKE_ERRORS[error] || WAKE_ERRORS["not-allowed"]),
           });
@@ -893,6 +968,7 @@ function Assistant() {
     window.clearTimeout(thinkTimer.current);
     window.clearTimeout(toastTimer.current);
     window.clearTimeout(listenDelay.current);
+    window.clearTimeout(holdTimer.current);
     clearReadingMark();
   });
 
@@ -909,6 +985,7 @@ function Assistant() {
   let status = "Lista para ayudarte";
   if (listening) status = "Te escucho…";
   else if (thinking) status = "Pensando…";
+  else if (reading === "holding" || (reading === "tour" && inGap)) status = "Te escucho…";
   else if (reading === "tour") status = "Recorriendo la página…";
   else if (reading === "paused") status = "Esperando tu pedido…";
   else if (reading) status = "Leyendo la página…";
@@ -935,7 +1012,9 @@ function Assistant() {
           aria-labelledby="eva-title"
           ref={panelRef}
         >
-          {listening && <div className="eva-listen-bar" aria-hidden="true" />}
+          {(listening || reading === "holding" || (reading === "tour" && inGap)) && (
+            <div className="eva-listen-bar" aria-hidden="true" />
+          )}
           <div className="eva-head">
             <EvaCharacter state={charState} talking={speaking} reduced={reduced} dots className="eva-head-char" />
             <div>
@@ -948,7 +1027,9 @@ function Assistant() {
                   Detener
                 </button>
               )}
-              {micMode === "barge" && <p className="eva-hint">Si me hablás, freno y te escucho.</p>}
+              {micMode === "barge" && reading !== "holding" && (
+                <p className="eva-hint">Hablame cuando digo «Te escucho…», entre proyecto y proyecto.</p>
+              )}
               {reading === "paused" && (
                 <p className="eva-hint">Decime «seguí», «abrí este», «siguiente», «anterior» o «basta».</p>
               )}
