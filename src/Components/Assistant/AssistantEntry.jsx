@@ -6,7 +6,7 @@ import "./Assistant.css";
 // Puertas de entrada al asistente, que no se ve hasta que lo llaman.
 
 // Interruptor del header: activa la escucha de «Eva, ¿estás ahí?»
-export function VoiceSwitch() {
+export function VoiceSwitch({ className = "" }) {
   const enabled = useWakeEnabled();
   const live = useWakeLive();
   const hintId = useId();
@@ -17,17 +17,14 @@ export function VoiceSwitch() {
       aria-checked={enabled}
       aria-label="Eva por voz"
       aria-describedby={hintId}
-      className={`eva-voice-switch${live ? " is-live" : ""}`}
-      title={`Decí «${WAKE_PHRASE}» para llamar a la asistente`}
+      className={`eva-voice-switch${live ? " is-live" : ""}${className ? ` ${className}` : ""}`}
+      title={`Eva por voz: decí «${WAKE_PHRASE}» para llamar a la asistente`}
       onClick={() => toggleWakeByUser(!enabled)}
     >
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" aria-hidden="true">
         <rect x="9" y="3" width="6" height="11" rx="3" />
         <path d="M5 11a7 7 0 0 0 14 0M12 18v3" />
       </svg>
-      <span className="eva-voice-label" aria-hidden="true">
-        Eva por voz
-      </span>
       <span className="eva-voice-track" aria-hidden="true">
         <span />
       </span>

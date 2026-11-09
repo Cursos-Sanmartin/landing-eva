@@ -21,8 +21,9 @@ function Footer() {
         <hr />
 
         <div className="footer-row">
-          <span>Comunidad EVA · Entornos Virtuales de Aprendizaje</span>
-          <AccessibilityLink />
+          <span>
+            Comunidad EVA · Entornos Virtuales de Aprendizaje · <AccessibilityLink />
+          </span>
           <span>Proyectos realizados por estudiantes del programa EVA</span>
         </div>
       </div>

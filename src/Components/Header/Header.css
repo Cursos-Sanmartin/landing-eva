@@ -98,3 +98,103 @@
     font-size: .875rem;
   }
 }
+
+/* ---------- Menú hamburguesa (pantallas angostas) ---------- */
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+/* «.header» adelante para ganarle al estilo del interruptor */
+.header .voice-in-bar,
+.header .menu-toggle {
+  display: none;
+}
+
+.menu-toggle {
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.3rem;
+  width: 2.75rem;
+  height: 2.75rem;
+  padding: 0;
+  border: 0;
+  border-radius: 0.75rem;
+  background: transparent;
+  color: #fff;
+  cursor: pointer;
+}
+
+.menu-toggle span {
+  display: block;
+  width: 1.4rem;
+  height: 2px;
+  border-radius: 2px;
+  background: currentColor;
+  transition: transform .25s ease, opacity .2s ease;
+}
+
+.header.scrolled .menu-toggle {
+  color: var(--navy);
+}
+
+/* Las tres rayitas se vuelven una cruz */
+.menu-open .menu-toggle span:nth-child(1) {
+  transform: translateY(calc(0.3rem + 2px)) rotate(45deg);
+}
+
+.menu-open .menu-toggle span:nth-child(2) {
+  opacity: 0;
+}
+
+.menu-open .menu-toggle span:nth-child(3) {
+  transform: translateY(calc(-0.3rem - 2px)) rotate(-45deg);
+}
+
+@media (max-width: 48rem) {
+  .header .voice-in-nav {
+    display: none;
+  }
+
+  .header .voice-in-bar,
+  .header .menu-toggle {
+    display: inline-flex;
+  }
+
+  /* El menú se despliega debajo del header */
+  .nav {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    right: 0;
+    display: none;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0;
+    padding: 0.5rem 5% 1.25rem;
+    border-top: 1px solid var(--line);
+    background: #fff;
+    box-shadow: 0 18px 30px -18px rgba(10, 46, 94, .35);
+  }
+
+  .menu-open .nav {
+    display: flex;
+  }
+
+  .nav a:not(.pill) {
+    display: block;
+    padding: 0.9rem 0.25rem;
+    border-bottom: 1px solid var(--line);
+    color: var(--navy);
+    font-size: 1rem;
+  }
+
+  .nav .pill {
+    margin-top: 1rem;
+    padding: 0.85em 1.35em;
+    text-align: center;
+    font-size: 1rem;
+  }
+}

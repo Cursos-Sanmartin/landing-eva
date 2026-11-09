@@ -102,16 +102,22 @@
   }
 }
 
+/* Enlace discreto del pie de página, al lado de «Comunidad EVA» */
 .eva-a11y-link {
   padding: 0;
   border: 0;
   background: none;
-  color: #fff;
+  color: inherit;
   font: inherit;
-  font-weight: 700;
   text-decoration: underline;
+  text-decoration-color: rgba(255, 255, 255, 0.35);
   text-underline-offset: 0.25em;
   cursor: pointer;
+}
+
+.eva-a11y-link:hover {
+  color: #fff;
+  text-decoration-color: currentColor;
 }
 
 .eva-skip {
@@ -810,9 +816,6 @@
     max-height: 42vh;
   }
 
-  .eva-voice-label {
-    display: none;
-  }
 }
 
 @media (prefers-reduced-motion: reduce) {
