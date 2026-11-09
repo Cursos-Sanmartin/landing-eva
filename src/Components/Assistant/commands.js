@@ -196,3 +196,30 @@ export function interpret(raw) {
   if (t.includes("gracias")) return { type: "thanks" };
   return { type: "unknown" };
 }
+
+// ---------- ¿Le están hablando encima? ----------
+
+// Palabras que Eva puede decir de otra forma cuando lee números («51» → «cincuenta y uno»)
+const NUMBER_WORDS = new Set(
+  ("cero uno una dos tres cuatro cinco seis siete ocho nueve diez once doce trece catorce quince dieciseis " +
+    "diecisiete dieciocho diecinueve veinte veintiuno veintidos veintitres veinticuatro veinticinco treinta " +
+    "cuarenta cincuenta sesenta setenta ochenta noventa cien ciento mil numero").split(" "),
+);
+
+// Una sola de estas alcanza para saber que la persona le está hablando
+const ATTENTION_WORDS = new Set(
+  ("abri abre abrime abrilo abrila abriste abrelo siguiente anterior basta para pare frena stop eva asistente " +
+    "espera segui cerra volve atras che hola momento perdon escucha escuchame oye mostrame").split(" "),
+);
+
+// Mira las últimas palabras que oyó el micrófono y descarta las que Eva acaba de decir.
+// Si quedan dos palabras nuevas (o una que llama la atención), la persona le está hablando encima.
+export function isTalkingOver(t, spokenTexts) {
+  const known = new Set(spokenTexts.join(" ").split(" ").filter(Boolean));
+  const stems = new Set([...known].filter((w) => w.length >= 4).map((w) => w.slice(0, 4)));
+  const tail = t.split(" ").filter(Boolean).slice(-4);
+  const fresh = tail.filter(
+    (w) => w.length >= 3 && !known.has(w) && !NUMBER_WORDS.has(w) && !stems.has(w.slice(0, 4)),
+  );
+  return fresh.length >= 2 || fresh.some((w) => ATTENTION_WORDS.has(w));
+}

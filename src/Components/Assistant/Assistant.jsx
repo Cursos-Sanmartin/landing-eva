@@ -12,7 +12,7 @@ import {
   readableBlocks,
   saveSettings,
 } from "./accessibility";
-import { THEME_NAMES, WAKE_PHRASE, interpret, isWakePhrase, normalize } from "./commands";
+import { THEME_NAMES, WAKE_PHRASE, interpret, isTalkingOver, isWakePhrase, normalize } from "./commands";
 import { onOpenRequest, onWakeToggledByUser, setWakeEnabled, setWakeLive, useWakeEnabled } from "./assistantStore";
 import {
   cardName,
@@ -116,6 +116,7 @@ function Assistant() {
   const [reading, setReading] = useState(false);
   const [toast, setToast] = useState("");
   const [usedVoice, setUsedVoice] = useState(false);
+  const [heard, setHeard] = useState("");
   const systemReduced = useSyncExternalStore(subscribeMotion, getMotion, () => false);
   const visible = useSyncExternalStore(subscribeVisibility, getVisible, () => true);
   const wakeEnabled = useWakeEnabled();
@@ -276,29 +277,72 @@ function Assistant() {
     recentSpeech.current = [...recentSpeech.current.slice(-1), normalize(text)];
   }
 
-  function isEcho(t) {
-    const heard = new Set(recentSpeech.current.join(" ").split(" "));
-    const words = t.split(" ").filter(Boolean);
-    if (!words.length) return true;
-    const repeated = words.filter((w) => heard.has(w)).length;
-    return repeated / words.length >= 0.75;
-  }
+  // ---------- Le hablan encima: frena, pide que repitan y escucha sin interferencias ----------
 
-  // «Abrí este» justo cuando ya empezó el siguiente: se refiere al anterior
-  function tourCard(now) {
-    const queue = readQueue.current;
-    if (queue.prevCard?.isConnected && now - (queue.cardAt || 0) < 1800) return queue.prevCard;
-    return queue.currentCard?.isConnected ? queue.currentCard : null;
-  }
-
-  // «Siguiente» / «anterior» durante el recorrido: saltea o vuelve un proyecto
-  function skipTour(dir) {
+  function interruptReading(heardAt) {
     const queue = readQueue.current;
     if (!queue.list.length) return;
-    if (dir < 0) queue.i = Math.max(1, queue.i - 2);
+    // queue.i pasa a ser lo que se retoma: lo que estaba diciendo
+    queue.i = Math.max(0, queue.i - 1);
+    // Si recién había empezado otro proyecto, seguramente reaccionó al anterior
+    if (queue.kind === "tour" && queue.prevCard?.isConnected && heardAt - (queue.cardAt || 0) < 1200) {
+      clearReadingMark();
+      queue.prevCard.classList.add("eva-reading");
+      queue.node = queue.prevCard;
+      queue.currentCard = queue.prevCard;
+      lastCard.current = queue.prevCard;
+      queue.i = Math.max(1, queue.i - 1);
+    }
+    queue.paused = true;
     speakId.current += 1;
     stopSpeaking();
+    voiceSession.current = true;
+    setReading("paused");
+    setHeard("");
+    const ask = "¿Sí? Repetime, por favor.";
+    addMessage("eva", ask);
+    speakOut(ask, () => startListening({ pausedTour: true }));
+  }
+
+  // Retoma desde lo que estaba diciendo (0), el siguiente (1) o el anterior (−1)
+  function resumeReading(dir) {
+    const queue = readQueue.current;
+    if (!queue.paused) return;
+    queue.paused = false;
+    if (dir > 0) queue.i += 1;
+    if (dir < 0) queue.i = Math.max(queue.kind === "tour" ? 1 : 0, queue.i - 1);
+    setReading(queue.kind || "tour");
     readNext();
+  }
+
+  // Lo que dijo después de «Repetime, por favor»
+  function handlePausedCommand(raw) {
+    const queue = readQueue.current;
+    addMessage("user", raw.trim());
+    if (/(^| )(segui|seguir|sigue|continua|continuar|dale|nada|perdon|disculpa)( |$)/.test(normalize(raw))) {
+      resumeReading(0);
+      return;
+    }
+    const intent = interpret(raw);
+    if (intent.type === "page") {
+      resumeReading(intent.dir);
+      return;
+    }
+    if (intent.type === "open" && intent.which === "this") {
+      const card = queue.currentCard?.isConnected ? queue.currentCard : null;
+      stopAll();
+      openWork(card ? { card } : intent);
+      return;
+    }
+    if (intent.type === "unknown" || intent.type === "empty") {
+      say("No te entendí. Decime «seguí», «abrí este», «siguiente» o «basta».", () =>
+        startListening({ pausedTour: true }),
+      );
+      return;
+    }
+    stopAll();
+    if (intent.type === "stop") say("Listo, freno.");
+    else runIntent(intent);
   }
 
   function selectedText() {
@@ -313,7 +357,7 @@ function Assistant() {
       say("No encontré texto para leer en esta página.");
       return;
     }
-    readQueue.current = { list, i: 0, node: null, after: null };
+    readQueue.current = { list, i: 0, node: null, after: null, kind: "page" };
     setReading("page");
     readNext();
   }
@@ -361,11 +405,22 @@ function Assistant() {
     }
     list.push({ text: outro, log: true });
     const canTalk =
-      canListen && (wakeEnabled || settingsRef.current.mode === "voz" || usedVoice || voiceSession.current);
+      canListen && (settingsRef.current.mode !== "texto" || wakeEnabled || usedVoice || voiceSession.current);
+    setHeard("");
     const after = () => {
       if (canTalk || voiceSession.current) startListening({ followUp: true });
     };
-    readQueue.current = { list, i: 0, node: null, after, gap: 450, currentCard: null, prevCard: null, cardAt: 0 };
+    readQueue.current = {
+      list,
+      i: 0,
+      node: null,
+      after,
+      kind: "tour",
+      gap: 450,
+      currentCard: null,
+      prevCard: null,
+      cardAt: 0,
+    };
     setReading("tour");
     readNext();
   }
@@ -457,12 +512,17 @@ function Assistant() {
     setListening(false);
   }
 
-  function startListening({ followUp: isFollowUp = false } = {}) {
+  function startListening({ followUp: isFollowUp = false, pausedTour = false } = {}) {
     if (!canListen) {
       say("Tu navegador no permite dictar por voz. Probá con Chrome o Edge, o escribime acá abajo.");
       return;
     }
-    stopAll();
+    if (pausedTour) {
+      speakId.current += 1;
+      stopSpeaking();
+    } else {
+      stopAll();
+    }
     stopListening();
     // El micrófono no puede escuchar la frase y el pedido a la vez
     const wasWaking = Boolean(wakeStop.current);
@@ -485,7 +545,8 @@ function Assistant() {
           setListening(false);
           if (text) {
             setInput("");
-            handleText(text);
+            if (pausedTour && readQueue.current.paused) handlePausedCommand(text);
+            else handleText(text);
             return;
           }
           if (error === "aborted") return;
@@ -495,6 +556,11 @@ function Assistant() {
               "No tengo permiso para usar el micrófono. Habilitalo desde el candado de la barra de direcciones, " +
                 "o escribime acá abajo.",
             );
+            return;
+          }
+          // Frenó porque le hablaron y después no dijo nada (o fue un ruido): sigue
+          if (pausedTour && readQueue.current.paused) {
+            say("Sigo.", () => resumeReading(0));
             return;
           }
           if (isFollowUp) {
@@ -728,7 +794,10 @@ function Assistant() {
   // "barge": mientras lee o recorre, pedidos como «abrí este», «siguiente» o «basta».
   let micMode = null;
   if (canListen && visible && !listening && !thinking) {
-    if (reading) micMode = wakeEnabled || settings.mode === "voz" || usedVoice ? "barge" : null;
+    // Mientras lee o recorre escucha, salvo que la persona haya elegido comunicarse escribiendo
+    if (reading === "tour" || reading === "page") {
+      micMode = settings.mode !== "texto" || wakeEnabled || usedVoice ? "barge" : null;
+    }
     else if (wakeEnabled && !speaking) micMode = "wake";
   }
 
@@ -747,36 +816,12 @@ function Assistant() {
   });
 
   // Pedidos durante el recorrido o la lectura. Devuelve true si hay que cortar la escucha.
+  // Mientras lee o recorre: si la persona le habla encima, frena y le pide que repita
   const onBarge = useEffectEvent((raw, isFinal, heardAt) => {
-    if (isWakePhrase(raw)) {
-      summon();
-      return true;
-    }
-    if (!isFinal) return false;
-    let t = normalize(raw);
-    // «Eva, …» siempre es para ella; si no, descartamos lo que coincide con lo que ella está diciendo
-    const addressed = /^(eva|asistente) /.test(t);
-    if (addressed) t = t.replace(/^(eva|asistente) /, "");
-    else if (isEcho(t)) return false;
-    const intent = interpret(t);
-    if (intent.type === "unknown" || intent.type === "empty" || intent.type === "hello") return false;
-    if (!addressed && !["open", "stop", "page"].includes(intent.type)) return false;
-
-    voiceSession.current = true;
-    if (intent.type === "page" && reading === "tour") {
-      skipTour(intent.dir);
-      return false; // sigue recorriendo y escuchando
-    }
-    addMessage("user", raw.trim());
-    if (intent.type === "open" && intent.which === "this") {
-      const card = tourCard(heardAt);
-      stopAll();
-      openWork(card ? { card } : intent);
-      return true;
-    }
-    stopAll();
-    if (intent.type === "stop") say("Listo, freno.");
-    else runIntent(intent);
+    const t = normalize(raw);
+    if (t) setHeard(t.split(" ").slice(-10).join(" "));
+    if (!isWakePhrase(raw) && !isTalkingOver(t, recentSpeech.current)) return false;
+    interruptReading(heardAt);
     return true;
   });
 
@@ -793,6 +838,7 @@ function Assistant() {
         : listenForWakeWord({
             match: (text, isFinal, heardAt) => onBarge(text, isFinal, heardAt),
             onReady: () => setWakeLive(true),
+            onFatal: (error) => showToast(WAKE_ERRORS[error] || WAKE_ERRORS["not-allowed"]),
           });
     wakeStop.current = stop;
     return () => {
@@ -864,6 +910,7 @@ function Assistant() {
   if (listening) status = "Te escucho…";
   else if (thinking) status = "Pensando…";
   else if (reading === "tour") status = "Recorriendo la página…";
+  else if (reading === "paused") status = "Esperando tu pedido…";
   else if (reading) status = "Leyendo la página…";
   else if (speaking) status = "Hablando…";
 
@@ -901,9 +948,11 @@ function Assistant() {
                   Detener
                 </button>
               )}
-              {micMode === "barge" && reading === "tour" && (
-                <p className="eva-hint">Podés decir «abrí este», «siguiente» o «basta».</p>
+              {micMode === "barge" && <p className="eva-hint">Si me hablás, freno y te escucho.</p>}
+              {reading === "paused" && (
+                <p className="eva-hint">Decime «seguí», «abrí este», «siguiente», «anterior» o «basta».</p>
               )}
+              {micMode === "barge" && heard && <p className="eva-heard">Escuché: «{heard}»</p>}
             </div>
             <button type="button" className="eva-icon-btn" onClick={closePanel} aria-label="Cerrar asistente">
               <CloseIcon />
