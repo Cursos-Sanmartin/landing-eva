@@ -115,3 +115,110 @@ export function listen({ onPartial, onEnd }) {
     }
   };
 }
+
+// Escucha de fondo hasta oír la frase para llamar a Eva (como «Ok Google»).
+// match(texto) decide si lo que oyó es la frase. Chrome corta la escucha cada tanto,
+// así que la volvemos a prender sola. Devuelve una función para apagarla.
+// onReady: el micrófono quedó escuchando. onFatal(error): no se puede escuchar (sin permiso, sin micrófono).
+export function listenForWakeWord({ match, onWake, onReady, onFatal }) {
+  if (!Recognition) {
+    onFatal?.("unsupported");
+    return () => {};
+  }
+  let stopped = false;
+  let rec = null;
+  let timer = 0;
+  let retries = 0;
+  let startedAt = 0;
+  let announced = false;
+
+  const startOne = () => {
+    if (stopped) return;
+    rec = new Recognition();
+    rec.lang = "es-AR";
+    rec.continuous = true;
+    rec.interimResults = true;
+    rec.maxAlternatives = 1;
+    rec.onstart = () => {
+      startedAt = Date.now();
+      if (!announced) {
+        announced = true;
+        onReady?.();
+      }
+    };
+    rec.onresult = (e) => {
+      retries = 0;
+      for (let i = e.resultIndex; i < e.results.length; i++) {
+        if (match(e.results[i][0].transcript)) {
+          stopped = true;
+          try {
+            rec.abort();
+          } catch {
+            // ya estaba cortado
+          }
+          onWake?.();
+          return;
+        }
+      }
+    };
+    rec.onerror = (e) => {
+      if (["not-allowed", "service-not-allowed", "audio-capture"].includes(e.error)) {
+        stopped = true;
+        onFatal?.(e.error);
+      }
+    };
+    rec.onend = () => {
+      if (stopped) return;
+      // Si se corta enseguida (red, silencio), esperamos cada vez un poco más
+      retries = Date.now() - startedAt < 1500 ? retries + 1 : 0;
+      timer = window.setTimeout(startOne, Math.min(10000, 300 * 2 ** retries));
+    };
+    try {
+      startedAt = Date.now();
+      rec.start();
+    } catch {
+      timer = window.setTimeout(startOne, 1000);
+    }
+  };
+
+  startOne();
+  return () => {
+    stopped = true;
+    window.clearTimeout(timer);
+    try {
+      rec?.abort();
+    } catch {
+      // ya estaba cortado
+    }
+  };
+}
+
+// Sonidito de dos notas al aparecer, como los asistentes de los celulares.
+// Si el navegador todavía no deja reproducir audio en la página, no suena y listo.
+let audioCtx = null;
+export function playChime() {
+  try {
+    const Context = window.AudioContext || window.webkitAudioContext;
+    if (!Context) return;
+    audioCtx = audioCtx || new Context();
+    if (audioCtx.state === "suspended") audioCtx.resume().catch(() => {});
+    const now = audioCtx.currentTime;
+    [
+      [660, 0],
+      [880, 0.12],
+    ].forEach(([freq, at]) => {
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      osc.type = "sine";
+      osc.frequency.value = freq;
+      gain.gain.setValueAtTime(0.0001, now + at);
+      gain.gain.exponentialRampToValueAtTime(0.18, now + at + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.0001, now + at + 0.22);
+      osc.connect(gain).connect(audioCtx.destination);
+      osc.start(now + at);
+      osc.stop(now + at + 0.25);
+    });
+  } catch {
+    // sin audio
+  }
+}

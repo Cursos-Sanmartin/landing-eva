@@ -41,6 +41,19 @@ const SECTIONS = [
 
 export const THEME_NAMES = Object.values(THEMES).map((t) => t.name);
 
+// Frase para llamar a Eva cuando está escondida. También vale «asistente, ¿estás ahí?»
+export const WAKE_PHRASE = "Eva, ¿estás ahí?";
+const WAKE_PATTERNS = [
+  /(^| )(eva|asistente) (estas|esta) ahi( |$)/,
+  /(^| )(eva|asistente) (estas|me escuchas)( |$)/,
+  /(^| )(hola|hey|ey|oye|che|ok) (eva|asistente)( |$)/,
+];
+
+export function isWakePhrase(raw) {
+  const t = normalize(raw);
+  return WAKE_PATTERNS.some((pattern) => pattern.test(t));
+}
+
 export function interpret(raw) {
   const t = normalize(raw);
   if (!t) return { type: "empty" };
@@ -55,6 +68,9 @@ export function interpret(raw) {
     has(t, "detener")
   ) {
     return { type: "stop" };
+  }
+  if (/(^| )(chau|adios|cerrate|cerra|cerrar|anda nomas|nada mas|eso es todo|listo gracias)( |$)/.test(t)) {
+    return { type: "close" };
   }
   if (/(no hables|sin voz|mudo|sin sonido|solo texto|solo por escrito)/.test(t)) {
     return { type: "toggle", key: "voice", value: false };

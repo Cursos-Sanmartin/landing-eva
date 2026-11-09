@@ -1,7 +1,7 @@
 import { useEffect, useEffectEvent, useRef, useState, useSyncExternalStore } from "react";
 import { useNavigate } from "react-router";
 import EvaCharacter from "./EvaCharacter";
-import { canListen, canSpeak, listen, speak, stopSpeaking } from "./speech";
+import { canListen, canSpeak, listen, listenForWakeWord, playChime, speak, stopSpeaking } from "./speech";
 import {
   DEFAULTS,
   SCALE_MAX,
@@ -12,12 +12,15 @@ import {
   readableBlocks,
   saveSettings,
 } from "./accessibility";
-import { THEME_NAMES, interpret } from "./commands";
+import { THEME_NAMES, WAKE_PHRASE, interpret, isWakePhrase } from "./commands";
+import { onOpenRequest, onWakeToggledByUser, setWakeEnabled, setWakeLive, useWakeEnabled } from "./assistantStore";
 import "./Assistant.css";
 
 // Asistente de accesibilidad de EVA (prueba).
-// Se abre con el botón de la esquina o con Alt + A. Entiende voz, texto y botones,
-// lee la página en voz alta y cambia el tamaño del texto, el contraste y más.
+// No se ve hasta que lo llaman: diciendo «Eva, ¿estás ahí?» (si la persona activó
+// «Eva por voz» en el header), con Alt + A, o desde «Accesibilidad» en el pie de página.
+// Entiende voz, texto y botones, lee la página en voz alta y cambia el tamaño del texto,
+// el contraste y más.
 
 const MODES = [
   { id: "voz", label: "Con la voz", hint: "Me hablás y te respondo en voz alta" },
@@ -34,7 +37,7 @@ const ABOUT =
 const HELP =
   "Puedo leerte la página en voz alta, agrandar el texto, activar alto contraste, poner una letra más fácil de leer, " +
   "resaltar los enlaces, pausar las animaciones y llevarte a cualquier sección o temática. " +
-  "Por ejemplo: «llevame a robótica».";
+  "Por ejemplo: «llevame a robótica». Para cerrarme, decí «chau».";
 const UNKNOWN =
   "No te entendí. Probá con «leé la página», «agrandá el texto» o «llevame a videojuegos». " +
   "También podés usar los botones.";
@@ -44,6 +47,15 @@ const TOGGLE_REPLIES = {
   font: ["Puse una letra más fácil de leer.", "Volví a la letra original."],
   links: ["Resalté los enlaces.", "Saqué el resaltado de los enlaces."],
   pause: ["Pausé las animaciones.", "Volví a activar las animaciones."],
+};
+
+const WAKE_ERRORS = {
+  unsupported: "Tu navegador no permite llamar a Eva con la voz. Probá con Chrome o Edge, o abrila con Alt + A.",
+  "not-allowed":
+    "El navegador no dio permiso al micrófono. Podés habilitarlo desde el candado de la barra de direcciones.",
+  "service-not-allowed":
+    "El navegador no dio permiso al micrófono. Podés habilitarlo desde el candado de la barra de direcciones.",
+  "audio-capture": "No encontré un micrófono conectado.",
 };
 
 function greeting(mode) {
@@ -64,6 +76,13 @@ function subscribeMotion(callback) {
 }
 const getMotion = () => window.matchMedia(MOTION_QUERY).matches;
 
+// Con la pestaña en segundo plano no escuchamos
+function subscribeVisibility(callback) {
+  document.addEventListener("visibilitychange", callback);
+  return () => document.removeEventListener("visibilitychange", callback);
+}
+const getVisible = () => document.visibilityState !== "hidden";
+
 const clampScale = (v) => Math.min(SCALE_MAX, Math.max(SCALE_MIN, v));
 
 function Assistant() {
@@ -77,11 +96,13 @@ function Assistant() {
   const [speaking, setSpeaking] = useState(false);
   const [thinking, setThinking] = useState(false);
   const [reading, setReading] = useState(false);
+  const [toast, setToast] = useState("");
   const systemReduced = useSyncExternalStore(subscribeMotion, getMotion, () => false);
+  const visible = useSyncExternalStore(subscribeVisibility, getVisible, () => true);
+  const wakeEnabled = useWakeEnabled();
   const reduced = systemReduced || settings.pause;
 
   const panelRef = useRef(null);
-  const launcherRef = useRef(null);
   const inputRef = useRef(null);
   const logRef = useRef(null);
   const settingsRef = useRef(settings);
@@ -89,7 +110,14 @@ function Assistant() {
   const msgId = useRef(1);
   const speakId = useRef(0);
   const stopListen = useRef(null);
+  const listenToken = useRef(0);
+  const listenDelay = useRef(0);
+  const wakeStop = useRef(null);
+  const announceWake = useRef(false);
+  const voiceSession = useRef(false);
+  const returnFocus = useRef(null);
   const thinkTimer = useRef(0);
+  const toastTimer = useRef(0);
   const readQueue = useRef({ list: [], i: 0, node: null });
   const greeted = useRef(false);
 
@@ -117,6 +145,14 @@ function Assistant() {
     if (log) log.scrollTop = log.scrollHeight;
   }, [messages, open, view]);
 
+  // ---------- Avisos cortos ----------
+
+  function showToast(text) {
+    window.clearTimeout(toastTimer.current);
+    setToast(text);
+    toastTimer.current = window.setTimeout(() => setToast(""), 6000);
+  }
+
   // ---------- Mensajes y voz ----------
 
   function addMessage(from, text) {
@@ -138,11 +174,17 @@ function Assistant() {
     });
   }
 
+  // Si la llamaron con la voz, después de responder vuelve a escuchar (como Hey Google)
+  function followUp() {
+    if (voiceSession.current) startListening({ followUp: true });
+  }
+
   // Eva responde: siempre por escrito y, si está activado, también en voz alta
   function say(text, after) {
     addMessage("eva", text);
-    if (settingsRef.current.voice && canSpeak) speakOut(text, after);
-    else after?.();
+    const next = after ?? followUp;
+    if (settingsRef.current.voice && canSpeak) speakOut(text, next);
+    else next();
   }
 
   function clearReadingMark() {
@@ -203,42 +245,67 @@ function Assistant() {
     readNext();
   }
 
-  // ---------- Escuchar ----------
+  // ---------- Escuchar un pedido ----------
 
   function stopListening() {
-    stopListen.current?.();
+    listenToken.current += 1;
+    window.clearTimeout(listenDelay.current);
+    const stop = stopListen.current;
+    stopListen.current = null;
+    stop?.();
+    setListening(false);
   }
 
-  function startListening() {
+  function startListening({ followUp: isFollowUp = false } = {}) {
     if (!canListen) {
       say("Tu navegador no permite dictar por voz. Probá con Chrome o Edge, o escribime acá abajo.");
       return;
     }
     stopAll();
     stopListening();
+    // El micrófono no puede escuchar la frase y el pedido a la vez
+    const wasWaking = Boolean(wakeStop.current);
+    wakeStop.current?.();
+    wakeStop.current = null;
+
+    listenToken.current += 1;
+    const token = listenToken.current;
     setInput("");
     setListening(true);
-    stopListen.current = listen({
-      onPartial: (text) => setInput(text),
-      onEnd: (text, error) => {
-        stopListen.current = null;
-        setListening(false);
-        if (text) {
-          setInput("");
-          handleText(text);
-          return;
-        }
-        if (error === "aborted") return;
-        if (error === "not-allowed" || error === "service-not-allowed") {
-          say(
-            "No tengo permiso para usar el micrófono. Habilitalo desde el candado de la barra de direcciones, " +
-              "o escribime acá abajo.",
-          );
-        } else {
+
+    const begin = () => {
+      if (listenToken.current !== token) return;
+      stopListen.current = listen({
+        onPartial: (text) => setInput(text),
+        onEnd: (text, error) => {
+          if (listenToken.current !== token) return;
+          stopListen.current = null;
+          setListening(false);
+          if (text) {
+            setInput("");
+            handleText(text);
+            return;
+          }
+          if (error === "aborted") return;
+          if (error === "not-allowed" || error === "service-not-allowed") {
+            voiceSession.current = false;
+            say(
+              "No tengo permiso para usar el micrófono. Habilitalo desde el candado de la barra de direcciones, " +
+                "o escribime acá abajo.",
+            );
+            return;
+          }
+          // Llamada por voz y no dijo nada más: se va, como Hey Google
+          if (isFollowUp && voiceSession.current) {
+            closePanel();
+            return;
+          }
           say("No te escuché. Tocá el micrófono y hablame cuando quieras.");
-        }
-      },
-    });
+        },
+      });
+    };
+    if (wasWaking) listenDelay.current = window.setTimeout(begin, 250);
+    else begin();
   }
 
   // ---------- Entender y hacer ----------
@@ -274,6 +341,9 @@ function Assistant() {
         stopAll();
         addMessage("eva", "Listo, freno.");
         break;
+      case "close":
+        say("¡Chau! Llamame cuando quieras.", () => closePanel());
+        break;
       case "read": {
         if (!canSpeak) {
           say("Tu navegador no tiene voz para leer en voz alta.");
@@ -301,10 +371,11 @@ function Assistant() {
           if (value) {
             const text = "Listo, ahora te respondo también en voz alta.";
             addMessage("eva", text);
-            if (canSpeak) speakOut(text);
+            if (canSpeak) speakOut(text, followUp);
           } else {
             stopAll();
             addMessage("eva", "Listo, te respondo solo por escrito.");
+            followUp();
           }
           break;
         }
@@ -342,7 +413,14 @@ function Assistant() {
     }
   }
 
+  // Lo que la persona toca o escribe corta el ida y vuelta por voz
+  function handleTyped(text) {
+    voiceSession.current = false;
+    handleText(text);
+  }
+
   function chooseMode(mode) {
+    voiceSession.current = false;
     const option = MODES.find((m) => m.id === mode);
     const voice = mode !== "texto";
     setSettings((s) => ({ ...s, mode, voice }));
@@ -357,7 +435,7 @@ function Assistant() {
     }
     addMessage("eva", reply);
 
-    const thenListen = mode === "voz" && canListen ? startListening : undefined;
+    const thenListen = mode === "voz" && canListen ? () => startListening() : undefined;
     if (voice && canSpeak) speakOut(reply, thenListen);
     else thenListen?.();
     if (mode === "texto") inputRef.current?.focus();
@@ -369,33 +447,114 @@ function Assistant() {
     addMessage("eva", "¿Cómo preferís comunicarte?");
   }
 
-  // ---------- Abrir y cerrar ----------
+  // ---------- Aparecer y desaparecer ----------
 
   function openPanel() {
+    returnFocus.current = document.activeElement;
+    setToast("");
     setOpen(true);
     if (greeted.current) return;
     greeted.current = true;
     const s = settingsRef.current;
-    const thenListen = s.mode === "voz" && canListen ? startListening : undefined;
+    const thenListen = s.mode === "voz" && canListen ? () => startListening() : undefined;
     // Si todavía no eligió cómo comunicarse, no habla sola: primero pregunta
     if (s.mode && s.voice && canSpeak && !reading) speakOut(greeting(s.mode), thenListen);
     else thenListen?.();
   }
 
+  // La llamaron diciendo «Eva, ¿estás ahí?»
+  function summon() {
+    playChime();
+    setToast("");
+    voiceSession.current = true;
+    // Primera vez que aparece: arranca directo, sin el saludo de bienvenida
+    if (!greeted.current) setMessages([]);
+    greeted.current = true;
+    if (!settingsRef.current.mode) setSettings((s) => ({ ...s, mode: "voz", voice: true }));
+    if (!open) {
+      returnFocus.current = document.activeElement;
+      setOpen(true);
+      setView("chat");
+    }
+    addMessage("eva", "¡Acá estoy! Decime qué necesitás.");
+    startListening({ followUp: true });
+  }
+
   function closePanel() {
     setOpen(false);
     stopListening();
+    voiceSession.current = false;
     window.clearTimeout(thinkTimer.current);
     setThinking(false);
-    launcherRef.current?.focus();
+    const back = returnFocus.current;
+    returnFocus.current = null;
+    if (back && back.isConnected && back !== document.body) back.focus?.();
   }
 
   function onSubmit(e) {
     e.preventDefault();
     const text = input;
     setInput("");
-    handleText(text);
+    handleTyped(text);
   }
+
+  // ---------- Escuchar la frase de fondo ----------
+
+  const wakeActive = wakeEnabled && canListen && visible && !listening && !speaking && !thinking && !reading;
+
+  const onWake = useEffectEvent(() => summon());
+  const onWakeReady = useEffectEvent(() => {
+    setWakeLive(true);
+    if (announceWake.current) {
+      announceWake.current = false;
+      showToast(`Listo. Decí «${WAKE_PHRASE}» cuando la necesites.`);
+    }
+  });
+  const onWakeFatal = useEffectEvent((error) => {
+    announceWake.current = false;
+    setWakeEnabled(false);
+    showToast(WAKE_ERRORS[error] || WAKE_ERRORS["not-allowed"]);
+  });
+
+  useEffect(() => {
+    if (!wakeActive) return;
+    const stop = listenForWakeWord({
+      match: isWakePhrase,
+      onWake: () => onWake(),
+      onReady: () => onWakeReady(),
+      onFatal: (error) => onWakeFatal(error),
+    });
+    wakeStop.current = stop;
+    return () => {
+      stop();
+      if (wakeStop.current === stop) wakeStop.current = null;
+      setWakeLive(false);
+    };
+  }, [wakeActive]);
+
+  // Interruptor del header y pedidos de abrir desde afuera
+  const onUserToggle = useEffectEvent((value) => {
+    if (!value) {
+      announceWake.current = false;
+      showToast("Listo, Eva ya no escucha.");
+      return;
+    }
+    if (!canListen) {
+      setWakeEnabled(false);
+      showToast(WAKE_ERRORS.unsupported);
+      return;
+    }
+    announceWake.current = true;
+  });
+  const onOpen = useEffectEvent(() => {
+    if (open) panelRef.current?.querySelector("input, button")?.focus();
+    else openPanel();
+  });
+
+  useEffect(() => onWakeToggledByUser((value) => onUserToggle(value)), []);
+  useEffect(() => onOpenRequest(() => onOpen()), []);
+
+  // ---------- Teclado ----------
 
   const onKey = useEffectEvent((e) => {
     if (e.altKey && (e.code === "KeyA" || e.key?.toLowerCase() === "a")) {
@@ -414,6 +573,8 @@ function Assistant() {
     stopSpeaking();
     stopListen.current?.();
     window.clearTimeout(thinkTimer.current);
+    window.clearTimeout(toastTimer.current);
+    window.clearTimeout(listenDelay.current);
     clearReadingMark();
   });
 
@@ -435,6 +596,10 @@ function Assistant() {
 
   return (
     <div className="eva-assistant">
+      <div className="eva-toast" role="status" aria-live="polite">
+        {toast}
+      </div>
+
       {reading && !open && (
         <button type="button" className="eva-stop-float" onClick={stopAll}>
           <StopIcon />
@@ -444,6 +609,7 @@ function Assistant() {
 
       {open && (
         <div className="eva-panel" id="eva-panel" role="dialog" aria-labelledby="eva-title" ref={panelRef}>
+          {listening && <div className="eva-listen-bar" aria-hidden="true" />}
           <div className="eva-head">
             <EvaCharacter state={charState} talking={speaking} reduced={reduced} dots className="eva-head-char" />
             <div>
@@ -502,7 +668,7 @@ function Assistant() {
                   </button>
                 )}
                 {QUICK.map((q) => (
-                  <button key={q} type="button" className="eva-chip" onClick={() => handleText(q)}>
+                  <button key={q} type="button" className="eva-chip" onClick={() => handleTyped(q)}>
                     {q}
                   </button>
                 ))}
@@ -524,7 +690,7 @@ function Assistant() {
                   type="button"
                   className="eva-mic"
                   aria-pressed={listening}
-                  onClick={listening ? stopListening : startListening}
+                  onClick={() => (listening ? stopListening() : startListening())}
                   aria-label={listening ? "Dejar de escuchar" : "Hablarle a Eva"}
                   disabled={!canListen}
                   title={canListen ? undefined : "Tu navegador no permite dictar por voz"}
@@ -539,6 +705,7 @@ function Assistant() {
           ) : (
             <SettingsView
               settings={settings}
+              wakeEnabled={wakeEnabled}
               onToggle={setSetting}
               onScale={(dir) => setSettings((s) => ({ ...s, scale: clampScale(s.scale + dir * SCALE_STEP) }))}
               onReset={() => setSettings((s) => ({ ...DEFAULTS, mode: s.mode, voice: s.voice }))}
@@ -547,30 +714,11 @@ function Assistant() {
           )}
         </div>
       )}
-
-      <button
-        type="button"
-        ref={launcherRef}
-        className="eva-launcher"
-        aria-expanded={open}
-        aria-controls={open ? "eva-panel" : undefined}
-        aria-keyshortcuts="Alt+A"
-        aria-label={open ? "Cerrar asistente" : "Abrir asistente de accesibilidad (Alt + A)"}
-        onClick={open ? closePanel : openPanel}
-      >
-        <EvaCharacter
-          state={speaking ? "speaking" : listening ? "listening" : "idle"}
-          talking={speaking}
-          reduced={reduced}
-          className="eva-launcher-char"
-        />
-        <span>{open ? "Cerrar" : "Asistente"}</span>
-      </button>
     </div>
   );
 }
 
-function SettingsView({ settings, onToggle, onScale, onReset, onChangeMode }) {
+function SettingsView({ settings, wakeEnabled, onToggle, onScale, onReset, onChangeMode }) {
   const mode = MODES.find((m) => m.id === settings.mode);
   return (
     <div className="eva-settings">
@@ -606,6 +754,14 @@ function SettingsView({ settings, onToggle, onScale, onReset, onChangeMode }) {
         disabled={!canSpeak}
         onChange={(v) => onToggle("voice", v)}
       />
+      <div className="eva-row">
+        <span className="eva-row-text">
+          Llamarla con la voz
+          <small>
+            {wakeEnabled ? `Activado: decí «${WAKE_PHRASE}»` : "Se activa con «Eva por voz» arriba de todo"}
+          </small>
+        </span>
+      </div>
       <div className="eva-row">
         <span className="eva-row-text">
           Cómo nos comunicamos

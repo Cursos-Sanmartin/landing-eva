@@ -1,4 +1,5 @@
 import "./Footer.css";
+import { AccessibilityLink } from "../Assistant/AssistantEntry";
 
 function Footer() {
   return (
@@ -21,6 +22,7 @@ function Footer() {
 
         <div className="footer-row">
           <span>Comunidad EVA · Entornos Virtuales de Aprendizaje</span>
+          <AccessibilityLink />
           <span>Proyectos realizados por estudiantes del programa EVA</span>
         </div>
       </div>
