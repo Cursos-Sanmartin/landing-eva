@@ -886,14 +886,19 @@ html.eva-a11y-pause *::after {
   scroll-behavior: auto !important;
 }
 
-/* Bloque que se está leyendo en voz alta (el atributo sobrevive si React vuelve a dibujar las clases) */
+/* Bloque que se está leyendo en voz alta (el atributo sobrevive si React vuelve a dibujar las clases).
+   Borde amarillo y un halo; el fondo se tiñe solo en textos sueltos, no en tarjetas con fondo propio */
 .eva-reading,
 [data-eva-reading] {
   outline: 3px solid #f2b705 !important;
   outline-offset: 4px;
   border-radius: 6px;
-  background-color: rgba(255, 228, 153, 0.45) !important;
+  box-shadow: 0 0 0 8px rgba(255, 228, 153, 0.35);
   scroll-margin: 6rem;
+}
+
+:is(p, h1, h2, h3, h4, blockquote, figcaption).eva-reading {
+  background-color: rgba(255, 228, 153, 0.45) !important;
 }
 
 html.eva-a11y-contrast .eva-bubble.from-eva,

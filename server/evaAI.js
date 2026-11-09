@@ -9,6 +9,7 @@ const ACTIONS = [
   "open",
   "tour",
   "program",
+  "section_tour",
   "go_theme",
   "go_section",
   "next",
@@ -59,7 +60,10 @@ Acciones:
 - open: abrir un trabajo. project = el nombre EXACTO de la lista de trabajos; o index = posición en la página
   (1 = el primero, -1 = el último); o, si dice «este», «ese» o «el que estás contando», no pongas project ni index.
 - tour: recorrer la página contando los proyectos. theme = el slug si nombra una temática.
-- program: contar de qué se trata el programa EVA (sus 6 unidades).
+- program: contar de qué se trata el programa EVA (sus 6 unidades). Usalo cuando pida que le cuenten o le expliquen el
+  programa, EVA, «el proyecto» (sin nombrar un trabajo) o de qué se trata todo esto.
+- section_tour: ir a una sección del inicio y contarla mostrándola. section = equipo, tematicas o programa.
+  Usalo cuando pida que le cuenten, le muestren o le expliquen el equipo o las temáticas.
 - go_theme: ir a una temática. theme = el slug.
 - go_section: ir a una sección del inicio. section = programa, tematicas, equipo o inicio.
 - next / prev: el siguiente / el anterior (en un recorrido o en un trabajo abierto).
@@ -75,7 +79,9 @@ Acciones:
 - help: qué puede hacer Eva. themes: qué temáticas hay.
 - hello: saluda. bye: se despide. thanks: agradece.
 - answer: reply = lo que Eva contesta, corto (una o dos oraciones), cálido, en español rioplatense con voseo. Usalo para:
-  · preguntas sobre EVA, sus temáticas o sus trabajos: respondé solo con la información de abajo, sin inventar nada;
+  · preguntas puntuales sobre EVA, el sitio, el equipo, las temáticas o los trabajos: respondé solo con la información
+    de abajo, sin inventar nada. Si la respuesta está en una sección del inicio, poné section (programa, tematicas o
+    equipo) para que Eva la muestre mientras contesta;
   · charla corta («¿cómo estás?», «¿quién sos?», «qué linda voz»): respondé amable y ofrecé ayuda;
   · pedidos que no tienen que ver con EVA ni con este sitio (el clima, chistes, tareas, noticias, otras páginas,
     preguntas generales): decí con amabilidad que solo podés ayudar con el sitio y el programa EVA, y ofrecé
@@ -88,13 +94,19 @@ Usá solo trabajos y temáticas de las listas. Si dudás entre dos acciones, ele
 function describe(context = {}) {
   const lines = [];
   if (context.page) lines.push(`Página actual: ${context.page}.`);
-  if (context.projectsHere?.length) lines.push(`Trabajos en esta página, en orden: ${context.projectsHere.join("; ")}.`);
+  if (context.site) lines.push(`Lo que dice el sitio:\n${context.site}`);
+  if (context.projectsHere?.length) {
+    const here = context.projectsHere.map((p) =>
+      typeof p === "string" ? p : [p.name, p.students, p.school, p.about].filter(Boolean).join(" — "),
+    );
+    lines.push(`Trabajos en esta página, en orden (nombre — estudiantes — escuela — de qué se trata):\n${here.join("\n")}`);
+  }
   if (context.openWork) lines.push("Hay un trabajo o una página web abierta.");
   if (context.paused) lines.push("Eva estaba recorriendo o leyendo la página y frenó para escuchar.");
   if (context.themes?.length) {
     lines.push(
       "Temáticas (slug — nombre — cantidad de trabajos): " +
-        context.themes.map((t) => `${t.slug} — ${t.name} — ${t.count}`).join("; ") +
+        context.themes.map((t) => `${t.slug} — ${t.name} — ${t.count}${t.about ? ` — ${t.about}` : ""}`).join("; ") +
         ".",
     );
   }

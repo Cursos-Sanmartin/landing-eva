@@ -3,6 +3,7 @@
 // que lo que devuelve exista de verdad (el trabajo, la temática) antes de hacerlo.
 
 import { PROJECTS, THEMES } from "../../data/projects";
+import { SITE_INFO } from "./siteInfo";
 
 const SECTIONS = {
   programa: { to: "/#programa", label: "al programa" },
@@ -13,19 +14,31 @@ const SECTIONS = {
 
 const TOGGLES = { contrast: "contrast", font: "font", links: "links" };
 
-// Lo que no cambia: temáticas, trabajos y de qué se trata EVA
-export function siteFacts(about, units) {
+// Lo que no cambia: lo que dice el sitio, las temáticas y los trabajos
+export function siteFacts(about) {
   return {
+    site: SITE_INFO,
     themes: Object.entries(THEMES).map(([slug, theme]) => ({
       slug,
       name: theme.name,
+      about: theme.description || "",
       count: PROJECTS.filter((p) => p.theme === slug).length,
     })),
     projects: PROJECTS.map((p) => ({ name: p.name, theme: p.theme })),
     about,
-    units,
   };
 }
+
+// Los trabajos de la página que se está viendo, con sus datos (para contestar sobre ellos)
+export function projectDetails(names) {
+  return names.map((name) => {
+    const p = PROJECTS.find((item) => item.name === name);
+    if (!p) return { name };
+    return { name, students: p.students || "", school: p.school || "", about: (p.description || "").slice(0, 240) };
+  });
+}
+
+const SECTION_IDS = ["programa", "tematicas", "equipo"];
 
 let warned = false;
 
@@ -69,6 +82,10 @@ function toIntent(a) {
       return { type: "tour", theme };
     case "program":
       return { type: "program" };
+    case "section_tour":
+      if (a.section === "programa") return { type: "program" };
+      if (a.section === "tematicas") return { type: "tour", theme: null, home: true };
+      return SECTION_IDS.includes(a.section) ? { type: "sectionTour", section: a.section } : null;
     case "go_theme":
       return theme ? { type: "go", to: `/tematicas/${theme}`, label: `a ${THEMES[theme].name}` } : null;
     case "go_section": {
@@ -110,7 +127,8 @@ function toIntent(a) {
       return { type: "close" };
     case "answer": {
       const reply = String(a.reply || "").trim().slice(0, 400);
-      return reply ? { type: "answer", text: reply } : null;
+      const section = SECTION_IDS.includes(a.section) ? a.section : null;
+      return reply ? { type: "answer", text: reply, section } : null;
     }
     default:
       return null;

@@ -172,6 +172,29 @@ export function programBlocks() {
   return blocks;
 }
 
+// Lo que Eva cuenta de otra sección del inicio (por ejemplo, el equipo): el título y cada tarjeta
+export function sectionBlocks(id) {
+  if (id === "programa") return programBlocks();
+  const section = document.getElementById(id);
+  if (!section) return [];
+  const blocks = [];
+  const head = section.querySelector("[class*='-head']");
+  if (head) {
+    const kicker = text(head.querySelector(".kicker"));
+    const title = text(head.querySelector("h2"));
+    const lead = text(head.querySelector("p"));
+    const top = kicker && title ? `${kicker}: ${title}.` : title ? `${title}.` : "";
+    blocks.push({ node: head, text: [top, lead].filter(Boolean).join(" ") });
+  }
+  section.querySelectorAll("li").forEach((li) => {
+    const name = text(li.querySelector("strong, b, h3"));
+    const detail = text(li.querySelector("small, p"));
+    const line = name && detail ? `${name}, ${detail.charAt(0).toLowerCase()}${detail.slice(1)}.` : text(li).replace(/^\d+\s*/, "");
+    if (line) blocks.push({ node: li, text: line });
+  });
+  return blocks;
+}
+
 // Lleva un paso a la franja de la pantalla donde el sitio lo activa
 // (el medio en la compu; más abajo en pantallas chicas, porque arriba está la tarjeta)
 export function scrollToBand(node, smooth) {

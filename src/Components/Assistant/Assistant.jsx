@@ -32,11 +32,12 @@ import {
   isWakePhrase,
   lateEchoTest,
   normalize,
+  wantsAI,
   withoutCall,
   withoutEcho,
 } from "./commands";
 import { onOpenRequest, onWakeToggledByUser, setWakeEnabled, setWakeLive, useWakeEnabled } from "./assistantStore";
-import { askAI, siteFacts } from "./ai";
+import { askAI, projectDetails, siteFacts } from "./ai";
 import {
   cardName,
   closeOpenViewer,
@@ -52,6 +53,7 @@ import {
   programBlocks,
   projectCards,
   scrollToBand,
+  sectionBlocks,
   themeTiles,
   turnViewerPage,
   waitFor,
@@ -425,7 +427,7 @@ function Assistant() {
       say("¿Sí? Decime.", waitInPause);
       return;
     }
-    if (!known) {
+    if (!known || wantsAI(raw, intent)) {
       // Antes de pedir que repita, le pregunta a la IA
       window.clearTimeout(waitTimer.current);
       setThinking(true);
@@ -436,6 +438,7 @@ function Assistant() {
         setThinking(false);
         if (!readQueue.current.paused) return;
         if (ai) routePaused(ai);
+        else if (known) routePaused(intent);
         else sorryInPause();
       });
       return;
@@ -463,6 +466,11 @@ function Assistant() {
     }
     if (intent.type === "hello") {
       say("¿Sí? Decime.", waitInPause);
+      return;
+    }
+    // Una pregunta en medio del recorrido: contesta y queda esperando («seguí» para continuar)
+    if (intent.type === "answer") {
+      say(intent.text, waitInPause);
       return;
     }
     if (intent.type === "page") {
@@ -695,6 +703,55 @@ function Assistant() {
     openWork({ card: cards[i] });
   }
 
+  // ---------- Secciones del inicio ----------
+
+  // Muestra una sección mientras contesta algo sobre ella
+  function showSection(section) {
+    const node = document.getElementById(section);
+    if (node) node.scrollIntoView({ block: "start", behavior: reducedRef.current ? "auto" : "smooth" });
+    else navigate(`/#${section}`);
+  }
+
+  // «Contame del equipo»: va a la sección y la cuenta tarjeta por tarjeta
+  async function startSectionTour(section) {
+    if (section === "programa") {
+      startProgramTour();
+      return;
+    }
+    stopAll();
+    closeOthers();
+    if (!document.getElementById(section)) {
+      navigate(`/#${section}`);
+      await waitFor(() => document.getElementById(section), 2500);
+    }
+    const blocks = sectionBlocks(section);
+    if (!blocks.length) {
+      say("No encontré esa sección en la página.");
+      return;
+    }
+    if (canTalk()) setMicOn(true);
+    const intro = section === "equipo" ? "Te presento al equipo." : "Te cuento esta sección.";
+    readQueue.current = {
+      list: [{ text: intro, log: true }, ...blocks, { text: "¿En qué más te puedo ayudar?", log: true }],
+      i: 0,
+      node: null,
+      after: null,
+      kind: "program",
+      gap: GAP_PAGE,
+    };
+    setReading("tour");
+    readNext();
+  }
+
+  // Las temáticas del inicio, aunque esté en otra página
+  async function startHomeTour() {
+    if (currentThemeSlug() || !themeTiles().length) {
+      navigate("/#tematicas");
+      await waitFor(() => !currentThemeSlug() && themeTiles().length > 0, 2500);
+    }
+    startTour(null);
+  }
+
   // ---------- «Contame de qué trata el programa» ----------
   // Va a la sección del programa y la cuenta paso a paso: cada unidad se activa al llegar,
   // así la tarjeta «Tu trabajo final» se va armando mientras Eva habla.
@@ -815,7 +872,9 @@ function Assistant() {
     const clean = withoutEcho(text, eva);
     if (clean && isActionable(clean)) return clean;
     const bare = withoutEcho(text, eva, false);
-    return bare && isAttention(bare) ? bare : text;
+    if (bare && isAttention(bare)) return bare;
+    // Para la IA, mejor sin las palabras de Eva que se colaron
+    return clean || text;
   }
 
   // Terminó de hablar: hace el pedido
@@ -848,8 +907,9 @@ function Assistant() {
     window.clearTimeout(thinkTimer.current);
     aiToken.current += 1;
     const token = aiToken.current;
-    // No entendió sola: le pregunta a la IA (si no hay IA, pide que repitan)
-    if (intent.type === "unknown") {
+    // Preguntas, «contame…» y lo que no entiende sola: le pregunta a la IA.
+    // Si la IA no está, hace lo que entendió (o pide que repitan).
+    if (wantsAI(text, intent)) {
       askAI(text, aiContext()).then((ai) => {
         if (aiToken.current !== token) return;
         setThinking(false);
@@ -877,7 +937,7 @@ function Assistant() {
       ...facts.current,
       units: Array.from(document.querySelectorAll("#programa .step h3"), (h) => h.textContent.trim()),
       page,
-      projectsHere: projectCards().map(cardName),
+      projectsHere: projectDetails(projectCards().map(cardName)),
       openWork: Boolean(webRef.current || openViewer()),
       paused: Boolean(readQueue.current.paused),
     };
@@ -914,7 +974,8 @@ function Assistant() {
           say("Tu navegador no tiene voz para contarte los proyectos.");
           break;
         }
-        startTour(intent.theme);
+        if (intent.home) startHomeTour();
+        else startTour(intent.theme);
         break;
       case "read": {
         if (!canSpeak) {
@@ -986,7 +1047,11 @@ function Assistant() {
         say(THANKS_BYE, () => closePanel());
         break;
       case "answer":
+        if (intent.section) showSection(intent.section);
         say(intent.text);
+        break;
+      case "sectionTour":
+        startSectionTour(intent.section);
         break;
       case "resume":
         say(DONE);
