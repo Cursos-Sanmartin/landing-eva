@@ -71,17 +71,26 @@ export function describeTile(tile) {
 
 // ---------- Abrir y cerrar un trabajo ----------
 
-// "viewer": se abrió en el visor del sitio. "web": se abrió en otra pestaña.
-// "blocked": el navegador no dejó abrir la pestaña (queda marcado el botón).
+// Qué pasó al abrir un trabajo:
+// "viewer": se abrió en el visor del sitio. "frame": es una página web que se puede mostrar adentro.
+// "web": se abrió en otra pestaña. "blocked": el navegador no dejó abrir la pestaña (queda el foco en el botón).
 export function openCard(card) {
   const zoom = card.querySelector("button.project-link");
   if (zoom) {
     zoom.click();
-    return "viewer";
+    return { result: "viewer" };
   }
   const link = card.querySelector("a.project-link");
-  if (!link) return "none";
-  const tab = window.open(link.href, "_blank");
+  if (!link) return { result: "none" };
+  const frame = frameUrl(link.href);
+  if (frame) return { result: "frame", frame, href: link.href };
+  return { result: openTab(link.href, link), href: link.href };
+}
+
+// Abre otra pestaña. Eva no puede abrir enlaces externos por su cuenta (el navegador lo bloquea
+// si no lo pidió una persona tocando algo), así que deja el foco en el enlace: con Enter se abre.
+export function openTab(href, link) {
+  const tab = window.open(href, "_blank");
   if (tab) {
     try {
       tab.opener = null;
@@ -90,8 +99,87 @@ export function openCard(card) {
     }
     return "web";
   }
-  link.focus();
+  if (link) {
+    link.focus({ preventScroll: false });
+    link.classList.add("eva-focus-link");
+    link.addEventListener("blur", () => link.classList.remove("eva-focus-link"), { once: true });
+  }
   return "blocked";
+}
+
+// ---------- Páginas web de los trabajos, adentro del sitio ----------
+
+// Sitios que no se dejan mostrar dentro de otra página
+const NO_FRAME = /(^|\.)(google\.com|youtube\.com|youtu\.be|instagram\.com|facebook\.com|tiktok\.com|canva\.com|figma\.com|notion\.so|notion\.site)$/;
+
+export function hostOf(href) {
+  try {
+    return new URL(href).hostname.replace(/^www\./, "");
+  } catch {
+    return "";
+  }
+}
+
+// Dirección para mostrar la página adentro del sitio (así Eva sigue escuchando), o null si no se puede
+export function frameUrl(href) {
+  let url;
+  try {
+    url = new URL(href);
+  } catch {
+    return null;
+  }
+  if (url.protocol !== "https:" && url.protocol !== "http:") return null;
+  const host = url.hostname.replace(/^www\./, "");
+  // Gamma tiene una dirección especial para mostrarse dentro de otras páginas
+  if (host === "gamma.app") {
+    const match = url.pathname.match(/^\/(?:docs|public)\/(?:.*-)?([a-z0-9]{10,})\/?$/i);
+    return match ? `https://gamma.app/embed/${match[1]}` : null;
+  }
+  if (NO_FRAME.test(host)) return null;
+  return url.href;
+}
+
+// ---------- La sección del programa ----------
+
+// Lo que Eva cuenta del programa: el título, las unidades del curso y cada paso.
+// Cada paso se lleva a la altura donde el sitio lo activa, así la tarjeta «Tu trabajo final» se va armando.
+export function programBlocks() {
+  const section = document.getElementById("programa");
+  if (!section) return [];
+  const blocks = [];
+  const head = section.querySelector(".program-head");
+  if (head) {
+    const kicker = text(head.querySelector(".kicker"));
+    const title = text(head.querySelector("h2"));
+    const lead = text(head.querySelector(".section-lead"));
+    const top = kicker && title ? `${kicker}: ${title}.` : title ? `${title}.` : "";
+    blocks.push({ node: head, text: [top, lead].filter(Boolean).join(" ") });
+  }
+  const kit = section.querySelector(".kit");
+  const label = text(kit?.querySelector(".kit-label"));
+  if (kit && label) {
+    blocks.push({
+      node: kit,
+      text: `${label}. Mientras te cuento cada una, mirá cómo se va armando tu trabajo final en la tarjeta.`,
+    });
+  }
+  section.querySelectorAll(".steps .step").forEach((step) => {
+    const small = text(step.querySelector("small"));
+    const title = text(step.querySelector("h3"));
+    const body = text(step.querySelector("p"));
+    blocks.push({ node: step, band: true, text: `${small ? `${small}: ` : ""}${title}. ${body}`.trim() });
+  });
+  return blocks;
+}
+
+// Lleva un paso a la franja de la pantalla donde el sitio lo activa
+// (el medio en la compu; más abajo en pantallas chicas, porque arriba está la tarjeta)
+export function scrollToBand(node, smooth) {
+  const small = window.matchMedia("(max-width: 64rem)").matches;
+  const band = small ? 0.74 : 0.5;
+  const rect = node.getBoundingClientRect();
+  const top = window.scrollY + rect.top + rect.height / 2 - window.innerHeight * band;
+  window.scrollTo({ top: Math.max(0, top), behavior: smooth ? "smooth" : "auto" });
 }
 
 export function openViewer() {

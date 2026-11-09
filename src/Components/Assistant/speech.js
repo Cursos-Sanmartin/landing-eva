@@ -80,8 +80,10 @@ export function spokenAround(at, back = 5000, ahead = 2000) {
     const rate = entry.end && !entry.cut ? (len / Math.max(1, entry.end - entry.start)) * 1000 : charsPerSecond;
     // Si la cortaron, no sabemos bien hasta dónde llegó: damos un margen
     const until = Math.min(to, entry.cut ? end + 1500 : end);
-    let a = Math.max(0, Math.floor(((from - entry.start) / 1000) * rate));
-    let b = Math.min(len, Math.ceil(((until - entry.start) / 1000) * rate));
+    // La velocidad es estimada (cada voz habla a su ritmo): margen de un 40 % para cada lado
+    const sure = entry.end && !entry.cut;
+    let a = Math.max(0, Math.floor(((from - entry.start) / 1000) * rate * (sure ? 1 : 0.6)));
+    let b = Math.min(len, Math.ceil(((until - entry.start) / 1000) * rate * (sure ? 1 : 1.4)));
     if (b <= a) continue;
     while (a > 0 && entry.text[a - 1] !== " ") a -= 1;
     while (b < len && entry.text[b] !== " ") b += 1;

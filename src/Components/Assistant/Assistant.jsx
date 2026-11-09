@@ -28,6 +28,7 @@ import {
   interpret,
   isAttention,
   isResume,
+  isCallWord,
   isWakePhrase,
   lateEchoTest,
   normalize,
@@ -42,13 +43,16 @@ import {
   describeCard,
   describeTile,
   findCardByName,
+  hostOf,
   openCard,
+  openTab,
   openViewer,
   pickByPosition,
+  programBlocks,
   projectCards,
+  scrollToBand,
   themeTiles,
   turnViewerPage,
-  viewerPageLabel,
   waitFor,
 } from "./pageGuide";
 import { THEMES } from "../../data/projects";
@@ -82,15 +86,13 @@ const HELP =
   "agrandar el texto, activar alto contraste, poner una letra más fácil de leer, resaltar los enlaces, " +
   "pausar las animaciones y llevarte a cualquier temática. " +
   "Por ejemplo: «navegá la página», «abrí el primero» o «llevame a robótica». Para cerrarme, decí «chau».";
+const DONE = "Listo. ¿En qué más te puedo ayudar?";
+const HELLO = "¡Hola! ¿En qué puedo ayudarte?";
+const BYE = "¡Chau! Llamame cuando quieras.";
+const THANKS_BYE = "¡De nada! Cuando me necesites, llamame.";
+const BLOCKED = "Como no estoy autorizada a abrir enlaces externos, tocá Enter y se abre en otra pestaña.";
 const SORRY_VOICE = "Perdón, ¿podrías repetirme? No entendí tu pedido.";
 const SORRY_TEXT = "Perdón, no entendí tu pedido. ¿Me lo escribís de otra forma?";
-
-const TOGGLE_REPLIES = {
-  contrast: ["Activé el alto contraste.", "Saqué el alto contraste."],
-  font: ["Puse una letra más fácil de leer.", "Volví a la letra original."],
-  links: ["Resalté los enlaces.", "Saqué el resaltado de los enlaces."],
-  pause: ["Pausé las animaciones.", "Volví a activar las animaciones."],
-};
 
 const WAKE_ERRORS = {
   unsupported: "Tu navegador no permite llamar a Eva con la voz. Probá con Chrome o Edge, o abrila con Alt + A.",
@@ -109,7 +111,6 @@ const ECHO_GRACE = 1200; // hasta acá pueden llegar sus últimas palabras (Chro
 const HOLD_QUIET = 1500; // sin palabras nuevas por este tiempo: la persona terminó de hablar
 const HOLD_SETTLE = 600; // frase cerrada pero incompleta: un ratito por si sigue
 const HOLD_MAX = 8000; // como mucho escucha una frase este tiempo
-const REPLY_WAIT = 9000; // llamada por voz: si no le dicen nada más, se va (como Hey Google)
 const PAUSE_WAIT = 8000; // recorrido en pausa: si no le piden nada, sigue
 
 function greeting(mode) {
@@ -119,7 +120,7 @@ function greeting(mode) {
       "y llevarte a donde quieras. ¿Cómo preferís comunicarte?"
     );
   }
-  return "¡Hola de nuevo! ¿En qué te ayudo?";
+  return HELLO;
 }
 
 const MOTION_QUERY = "(prefers-reduced-motion: reduce)";
@@ -159,6 +160,7 @@ function Assistant() {
   const [caption, setCaption] = useState("");
   const [draft, setDraft] = useState("");
   const [toast, setToast] = useState("");
+  const [web, setWeb] = useState(null); // página web de un trabajo, mostrada adentro del sitio
   const [usedVoice, setUsedVoice] = useState(false);
   const systemReduced = useSyncExternalStore(subscribeMotion, getMotion, () => false);
   const visible = useSyncExternalStore(subscribeVisibility, getVisible, () => true);
@@ -185,6 +187,8 @@ function Assistant() {
   const segs = useRef(new Map());
   const misses = useRef(0);
   const greeted = useRef(false);
+  const webRef = useRef(null);
+  const webLinkRef = useRef(null);
 
   // Aplicar y recordar los ajustes
   useEffect(() => {
@@ -246,22 +250,23 @@ function Assistant() {
     setSpeaking(false);
   }
 
-  // Si la llamaron con la voz, después de responder espera otro pedido (como Hey Google)
-  function followUp() {
-    if (voiceSession.current) waitForReply();
-  }
-
   // Eva responde: siempre en un globito y, si está activado, también en voz alta.
-  // Si le hablaron, contesta hablando.
+  // Si le hablaron, contesta hablando. Después se queda escuchando hasta que se despidan.
   function say(text, after) {
     addMessage("eva", text);
-    const next = after ?? followUp;
-    if ((settingsRef.current.voice || voiceSession.current) && canSpeak) speakOut(text, next);
-    else next();
+    if ((settingsRef.current.voice || voiceSession.current) && canSpeak) speakOut(text, after);
+    else after?.();
+  }
+
+  // Página web de un trabajo, adentro del sitio: así Eva la puede cerrar y sigue escuchando
+  function showWeb(value) {
+    webRef.current = value;
+    setWeb(value);
   }
 
   function clearReadingMark() {
     readQueue.current.node?.classList.remove("eva-reading");
+    readQueue.current.node?.removeAttribute("data-eva-reading");
     readQueue.current.node = null;
   }
 
@@ -276,21 +281,6 @@ function Assistant() {
   }
 
   // ---------- Esperar el próximo pedido ----------
-
-  // Llamada por voz: si no le dicen nada más, se va sola
-  function waitForReply() {
-    window.clearTimeout(waitTimer.current);
-    if (!voiceSession.current) return;
-    waitTimer.current = window.setTimeout(() => {
-      if (hold.current || readQueue.current.list.length || !voiceSession.current) return;
-      // Con un trabajo abierto se queda, para poder cerrarlo o pasar de página
-      if (openViewer()) {
-        waitForReply();
-        return;
-      }
-      closePanel();
-    }, REPLY_WAIT);
-  }
 
   // Recorrido en pausa: espera el pedido y, si no llega, sigue
   function waitInPause() {
@@ -336,7 +326,9 @@ function Assistant() {
       }
       if (block.node) {
         block.node.classList.add("eva-reading");
-        block.node.scrollIntoView({ block: "center", behavior: reducedRef.current ? "auto" : "smooth" });
+        block.node.setAttribute("data-eva-reading", "");
+        if (block.band) scrollToBand(block.node, !reducedRef.current);
+        else block.node.scrollIntoView({ block: "center", behavior: reducedRef.current ? "auto" : "smooth" });
         queue.node = block.node;
         // «abrí este» abre el trabajo que está contando
         const card = block.node.closest?.(".project-card");
@@ -376,6 +368,7 @@ function Assistant() {
     if (!queue.inGap && queue.kind === "tour" && queue.prevCard?.isConnected && heardAt - (queue.cardAt || 0) < 1200) {
       clearReadingMark();
       queue.prevCard.classList.add("eva-reading");
+      queue.prevCard.setAttribute("data-eva-reading", "");
       queue.node = queue.prevCard;
       queue.currentCard = queue.prevCard;
       lastCard.current = queue.prevCard;
@@ -396,12 +389,12 @@ function Assistant() {
     if (!queue.paused) return;
     window.clearTimeout(waitTimer.current);
     queue.paused = false;
-    const first = queue.kind === "tour" ? 1 : 0;
+    const first = queue.kind === "page" ? 0 : 1;
     if (dir > 0) queue.i = queue.cur + 1;
     else if (dir < 0) queue.i = Math.max(first, queue.cur - 1);
     else queue.i = queue.pausedInGap ? queue.cur + 1 : queue.cur;
     queue.skipGap = true; // al retomar arranca enseguida
-    setReading(queue.kind || "tour");
+    setReading(queue.kind === "page" ? "page" : "tour");
     readNext();
   }
 
@@ -444,7 +437,7 @@ function Assistant() {
       return;
     }
     stopAll();
-    if (intent.type === "stop") say("Listo, freno.");
+    if (intent.type === "stop") say(DONE);
     else runIntent(intent);
   }
 
@@ -468,7 +461,7 @@ function Assistant() {
       return;
     }
     if (canTalk()) setMicOn(true);
-    readQueue.current = { list, i: 0, node: null, after: followUp, kind: "page", gap: GAP_PAGE };
+    readQueue.current = { list, i: 0, node: null, after: null, kind: "page", gap: GAP_PAGE };
     setReading("page");
     readNext();
   }
@@ -520,7 +513,7 @@ function Assistant() {
       list,
       i: 0,
       node: null,
-      after: followUp,
+      after: null,
       kind: "tour",
       gap: GAP_TOUR,
       currentCard: null,
@@ -576,35 +569,79 @@ function Assistant() {
     lastCard.current = card;
     card.scrollIntoView({ block: "center", behavior: reducedRef.current ? "auto" : "smooth" });
     const name = cardName(card);
-    const result = openCard(card);
-    if (result === "viewer") say(`Te abro «${name}». Para cerrarlo, decí «cerrá» o tocá la X.`);
-    else if (result === "web") say(`«${name}» es una página web: te la abrí en otra pestaña.`);
-    else if (result === "blocked") {
-      say(
-        `«${name}» es una página web y el navegador no me dejó abrir otra pestaña. ` +
-          "Te marqué el botón «Visitar la web»: tocalo o apretá Enter.",
-      );
-    } else say(`No pude abrir «${name}».`);
+    const opened = openCard(card);
+    if (opened.result === "frame") {
+      showWeb({ name, url: opened.frame, href: opened.href });
+      say(DONE);
+    } else if (opened.result === "viewer" || opened.result === "web") say(DONE);
+    else if (opened.result === "blocked") say(BLOCKED);
+    else say(`No pude abrir «${name}».`);
+  }
+
+  // «Abrila en otra pestaña»: la página web que está mostrando
+  function openWebInTab() {
+    const current = webRef.current;
+    if (!current) {
+      say("No hay ninguna página web abierta.");
+      return;
+    }
+    if (openTab(current.href, webLinkRef.current) === "web") {
+      showWeb(null);
+      say(DONE);
+    } else {
+      say(BLOCKED);
+    }
   }
 
   function closeWork(plain) {
+    if (webRef.current) {
+      showWeb(null);
+      say(DONE);
+      return;
+    }
     if (closeOpenViewer()) {
-      say("Listo, lo cerré.");
+      say(DONE);
       return;
     }
     if (plain) {
-      say("¡Chau! Llamame cuando quieras.", () => closePanel());
+      say(BYE, () => closePanel());
       return;
     }
     say("No hay ningún trabajo abierto.");
   }
 
   function turnWorkPage(dir) {
-    const { result, dialog } = turnViewerPage(dir);
+    const { result } = turnViewerPage(dir);
     if (result === "none") say("No hay ningún trabajo abierto.");
     else if (result === "single") say("Este trabajo tiene una sola página.");
     else if (result === "edge") say(dir > 0 ? "Ya estás en la última página." : "Ya estás en la primera página.");
-    else window.setTimeout(() => say(viewerPageLabel(dialog) || "Listo."), 80);
+    else say(DONE);
+  }
+
+  // ---------- «Contame de qué trata el programa» ----------
+  // Va a la sección del programa y la cuenta paso a paso: cada unidad se activa al llegar,
+  // así la tarjeta «Tu trabajo final» se va armando mientras Eva habla.
+
+  async function startProgramTour() {
+    stopAll();
+    if (!document.querySelector("#programa .step")) {
+      navigate("/#programa");
+      await waitFor(() => document.querySelector("#programa .step"), 2500);
+    }
+    const blocks = programBlocks();
+    if (!blocks.length) {
+      say(ABOUT);
+      return;
+    }
+    if (canTalk()) setMicOn(true);
+    const list = [
+      { text: "Te cuento de qué se trata el programa.", log: true },
+      ...blocks,
+      { text: `Así se arma tu proyecto en EVA, paso a paso. ${DONE.replace("Listo. ", "")}`, log: true },
+    ];
+    readQueue.current = { list, i: 0, node: null, after: null, kind: "program", gap: GAP_TOUR };
+    setReading("tour");
+    readNext();
   }
 
   // ---------- Lo que oye el micrófono ----------
@@ -634,7 +671,8 @@ function Assistant() {
         isUser = (w) => !echo(w);
       }
       for (let i = seg.checked; i < words.length; i++) {
-        if (isUser(words[i])) {
+        // «Eva», «¿estás ahí?»: lo que queda de llamarla no es un pedido
+        if (isUser(words[i]) && !isCallWord(words[i])) {
           seg.from = i;
           break;
         }
@@ -748,11 +786,13 @@ function Assistant() {
     switch (intent.type) {
       case "stop":
         stopAll();
-        addMessage("eva", "Listo, freno.");
-        followUp();
+        say(DONE);
         break;
       case "close":
-        say("¡Chau! Llamame cuando quieras.", () => closePanel());
+        say(BYE, () => closePanel());
+        break;
+      case "newTab":
+        openWebInTab();
         break;
       case "closeWork":
         closeWork(intent.plain);
@@ -787,7 +827,7 @@ function Assistant() {
           break;
         }
         setSetting("scale", next);
-        say(`Listo, el texto quedó al ${Math.round(next * 100)}%.`);
+        say(DONE);
         break;
       }
       case "toggle": {
@@ -795,45 +835,48 @@ function Assistant() {
         if (intent.key === "voice") {
           setSetting("voice", value);
           if (value) {
-            const text = "Listo, ahora te respondo también en voz alta.";
-            addMessage("eva", text);
-            if (canSpeak) speakOut(text, followUp);
+            addMessage("eva", DONE);
+            if (canSpeak) speakOut(DONE);
           } else {
             stopAll();
-            addMessage("eva", "Listo, te respondo solo por escrito.");
-            followUp();
+            addMessage("eva", "Listo, te respondo solo por escrito. ¿En qué más te puedo ayudar?");
           }
           break;
         }
         setSetting(intent.key, value);
-        say(TOGGLE_REPLIES[intent.key][value ? 0 : 1]);
+        say(DONE);
         break;
       }
       case "reset":
         setSettings((s) => ({ ...DEFAULTS, mode: s.mode, voice: s.voice }));
-        say("Volví todo a como estaba.");
+        say(DONE);
         break;
       case "themes":
         say(`Hay ${THEME_NAMES.length} temáticas: ${THEME_NAMES.join(", ")}. ¿A cuál te llevo?`);
         break;
       case "go":
         navigate(intent.to);
-        say(`Te llevo ${intent.label}.`);
+        say(DONE);
         break;
       case "about":
-        say(ABOUT);
+      case "program":
+        if (!canSpeak) {
+          say(ABOUT);
+          break;
+        }
+        startProgramTour();
         break;
       case "help":
         say(HELP);
         break;
       case "hello":
-        say("¡Hola! ¿En qué te ayudo?");
+        say(HELLO);
         break;
+      // «Muchas gracias por la ayuda»: se despide
       case "thanks":
-        say("¡De nada! Acá estoy si me necesitás.");
+        say(THANKS_BYE, () => closePanel());
         break;
       case "empty":
-        followUp();
         break;
       default:
         say(lastByVoice.current ? SORRY_VOICE : SORRY_TEXT);
@@ -922,12 +965,14 @@ function Assistant() {
       setView("chat");
     }
     setMicOn(true);
-    addMessage("eva", "¡Acá estoy! Decime qué necesitás.");
-    waitForReply();
+    hush();
+    addMessage("eva", HELLO);
+    if (canSpeak) speakOut(HELLO);
   }
 
   function closePanel() {
     stopAll();
+    showWeb(null);
     setOpen(false);
     setMicOn(false);
     voiceSession.current = false;
@@ -1038,6 +1083,11 @@ function Assistant() {
       return;
     }
     if (e.key === "Escape") {
+      // Primero se cierra la página web que muestra Eva
+      if (webRef.current) {
+        showWeb(null);
+        return;
+      }
       // Con un trabajo abierto, Escape cierra el trabajo (lo hace el propio sitio)
       if (openViewer()) return;
       if (open) closePanel();
@@ -1085,6 +1135,31 @@ function Assistant() {
       <div className="eva-toast" role="status" aria-live="polite">
         {toast}
       </div>
+
+      {web && (
+        <div className="eva-web" role="dialog" aria-label={`${web.name} (página web)`}>
+          <div className="eva-web-bar">
+            <div className="eva-web-title">
+              <b>{web.name}</b>
+              <span>{hostOf(web.href)}</span>
+            </div>
+            <a className="eva-web-tab" href={web.href} target="_blank" rel="noopener noreferrer" ref={webLinkRef}>
+              Abrir en otra pestaña
+            </a>
+            <button type="button" className="eva-round" onClick={() => showWeb(null)} aria-label="Cerrar la página">
+              <CloseIcon />
+            </button>
+          </div>
+          <iframe
+            key={web.url}
+            src={web.url}
+            title={web.name}
+            allow="fullscreen; autoplay; clipboard-write"
+            sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-popups-to-escape-sandbox allow-modals allow-downloads allow-presentation"
+          />
+          <p className="eva-web-hint">Si la página no se ve, tocá «Abrir en otra pestaña».</p>
+        </div>
+      )}
 
       {open && (
         <div

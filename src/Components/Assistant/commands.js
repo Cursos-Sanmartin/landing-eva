@@ -147,6 +147,10 @@ export function interpret(raw) {
   if (/(^| )(cerra|cerralo|cerrala|cerrar|cerrarlo|cerrarla|cerras|sali|salir)( |$)/.test(t)) {
     return { type: "closeWork", plain: !/(trabajo|imagen|video|visor|documento|proyecto|lo|la)( |$)/.test(t) };
   }
+  // «Abrila en otra pestaña»: la página web que está mostrando
+  if (/(otra pestana|nueva pestana|pestana nueva|otra ventana|nueva ventana|ventana nueva|aparte)/.test(t)) {
+    return { type: "newTab" };
+  }
   if (/(no hables|sin voz|mudo|sin sonido|solo texto|solo por escrito)/.test(t)) {
     return { type: "toggle", key: "voice", value: false };
   }
@@ -173,13 +177,25 @@ export function interpret(raw) {
 
   // Recorrido: baja por la página y cuenta los proyectos
   if (
-    /(navega|navegame|recorre|recorrido|paseo|mostrame la pagina|describi)/.test(t) ||
-    /(que|cuales son los|contame los|contame que|mostrame los) (proyectos|trabajos)/.test(t) ||
-    (/(proyectos|trabajos)/.test(t) &&
-      /(^| )(conta|contas|contame|contar|contarme|decime|deci|decirme|nombrame|listame|mostrame|mostrar|mostrarme|ver|hay)( |$)/.test(t)) ||
+    /(navega|navegue|navegar|recorre|recorri|recorrido|recorramos|paseo|una vuelta|describi)/.test(t) ||
+    /(mostrame|muestrame|mostras|mostrarme|ensename|ensenarme) (la pagina|lo que hay|que hay)/.test(t) ||
+    /(que|cuales son los|cuales son las|contame los|contame que|mostrame los|muestrame los) (proyectos|trabajos)/.test(t) ||
+    (/(proyecto|trabajo)/.test(t) &&
+      /(^| )(conta|contas|contame|contar|contarme|decime|deci|decirme|nombrame|listame|mostrame|muestrame|mostras|muestras|mostra|muestra|mostrar|mostrarme|ensename|ensenas|ensenarme|ver|veo|hay)( |$)/.test(t)) ||
     /(^| )que hay (aca|aqui|en esta pagina|en la pagina|para ver)( |$)/.test(t)
   ) {
     return { type: "tour", theme: findTheme(t) };
+  }
+
+  // «Contame de qué trata el programa», «¿qué es EVA?»: recorrido por la sección del programa
+  if (
+    (/(de que (se )?trata|que es|en que consiste|como funciona|como es|conta|contame|contas|explica|explicame|hablame|decime)/.test(
+      t,
+    ) &&
+      /(programa|eva|curso|cursos|la propuesta|las unidades|los pasos)/.test(t)) ||
+    /^(de que (se )?trata( esto)?|que es esto|que es esta pagina)$/.test(t)
+  ) {
+    return { type: "program" };
   }
 
   // Pasar de página dentro de un trabajo abierto
@@ -214,9 +230,10 @@ export function interpret(raw) {
   if (/(que es eva|de que se trata|que es esto|que es esta pagina|contame|que hacen|hablame de eva)/.test(t)) {
     return { type: "about" };
   }
+  // «Muchas gracias por la ayuda» es para despedirse, no un pedido de ayuda
+  if (t.includes("gracias")) return { type: "thanks" };
   if (/(ayuda|que podes|que sabes|que haces|como funciona|opciones|que puedo)/.test(t)) return { type: "help" };
   if (hasAny(t, ["hola", "buenas", "buen dia", "buenas tardes", "buenas noches", "que tal"])) return { type: "hello" };
-  if (t.includes("gracias")) return { type: "thanks" };
   return { type: "unknown" };
 }
 
@@ -323,6 +340,10 @@ export function withoutEcho(t, spokenTexts, keepShort = true) {
 
 // Lo que queda de la frase para llamarla («…¿estás ahí?») o el nombre al principio no es un pedido
 const CALL_WORDS = new Set("eva asistente estas esta ahi alli ahi oye hey ey".split(" "));
+export function isCallWord(w) {
+  return CALL_WORDS.has(w);
+}
+
 export function withoutCall(t) {
   const words = t.split(" ").filter(Boolean);
   let i = 0;
