@@ -3,6 +3,7 @@ import Header from './Components/Header/Header'
 import Home from './pages/Home'
 import ThemePage from './pages/ThemePage'
 import Footer from './Components/Footer/Footer'
+import Assistant from './Components/Assistant/Assistant'
 
 function App() {
   return (
@@ -15,6 +16,7 @@ function App() {
         </Routes>
       </main>
       <Footer />
+      <Assistant />
     </>
   )
 }
