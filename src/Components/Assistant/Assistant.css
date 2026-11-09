@@ -141,10 +141,10 @@
   right: max(1rem, env(safe-area-inset-right, 0px));
   bottom: max(1rem, env(safe-area-inset-bottom, 0px));
   z-index: 1001;
-  width: min(26.5rem, calc(100vw - 2rem));
+  width: min(22rem, calc(100vw - 2rem));
   display: flex;
   flex-direction: column;
-  gap: 0.6rem;
+  gap: 0.5rem;
   color: var(--navy-ink);
   text-align: left;
   pointer-events: none; /* lo transparente no tapa la página */
@@ -157,7 +157,7 @@
 
 /* La charla: una columna de globitos que se desvanece arriba */
 .eva-thread {
-  max-height: min(48vh, 26rem);
+  max-height: min(42vh, 22rem);
   overflow-y: auto;
   overscroll-behavior: contain;
   display: flex;
@@ -175,7 +175,7 @@
 
 /* Mientras recorre o lee, la charla ocupa menos para dejar ver la página */
 .eva-dock.is-reading .eva-thread {
-  max-height: min(30vh, 15rem);
+  max-height: min(28vh, 13rem);
 }
 
 .eva-messages {
@@ -187,9 +187,9 @@
 .eva-dock .eva-bubble {
   max-width: 86%;
   margin: 0;
-  padding: 0.7rem 1rem;
-  border-radius: 1.35rem;
-  font-size: 1.03rem;
+  padding: 0.55rem 0.85rem;
+  border-radius: 1.15rem;
+  font-size: 0.92rem;
   font-weight: 500;
   line-height: 1.45;
   box-shadow: var(--eva-shadow);
@@ -245,9 +245,9 @@
 .eva-mode {
   display: grid;
   gap: 0.15rem;
-  padding: 0.7rem 0.95rem;
+  padding: 0.55rem 0.85rem;
   border: 1.5px solid var(--line);
-  border-radius: 1.1rem;
+  border-radius: 1rem;
   background: #fff;
   color: var(--navy);
   font: inherit;
@@ -257,11 +257,11 @@
 }
 
 .eva-mode b {
-  font-size: 1rem;
+  font-size: 0.92rem;
 }
 
 .eva-mode small {
-  font-size: 0.85rem;
+  font-size: 0.78rem;
   font-weight: 500;
   color: var(--muted);
 }
@@ -286,13 +286,13 @@
 
 .eva-chip {
   flex: none;
-  padding: 0.5rem 0.85rem;
+  padding: 0.4rem 0.75rem;
   border: 1.5px solid var(--line);
   border-radius: 999px;
   background: #fff;
   color: var(--navy);
   font: inherit;
-  font-size: 0.875rem;
+  font-size: 0.8rem;
   font-weight: 700;
   box-shadow: 0 6px 16px -10px rgba(10, 46, 94, 0.45);
   cursor: pointer;
@@ -308,10 +308,10 @@
 
 .eva-pad {
   position: relative;
-  width: 12.5rem;
-  padding: 0.5rem 0.75rem 0.35rem;
+  width: 9.5rem;
+  padding: 0.4rem 0.6rem 0.3rem;
   border: 4px solid transparent;
-  border-radius: 2.4rem;
+  border-radius: 2rem;
   background:
     linear-gradient(#fff, #fff) padding-box,
     linear-gradient(#fff, #fff) border-box;
@@ -369,8 +369,8 @@
 }
 
 .eva-round {
-  width: 2.5rem;
-  height: 2.5rem;
+  width: 2.2rem;
+  height: 2.2rem;
   display: grid;
   place-items: center;
   border: 1.5px solid var(--line);
@@ -392,11 +392,11 @@
   gap: 0.45rem;
   max-width: 100%;
   margin: 0;
-  padding: 0.4rem 0.8rem;
+  padding: 0.35rem 0.7rem;
   border-radius: 999px;
   background: #fff;
   color: var(--navy);
-  font-size: 0.875rem;
+  font-size: 0.8rem;
   font-weight: 700;
   line-height: 1.2;
   box-shadow: 0 6px 16px -10px rgba(10, 46, 94, 0.45);
@@ -420,13 +420,13 @@
   display: inline-flex;
   align-items: center;
   gap: 0.4rem;
-  padding: 0.5rem 0.95rem;
+  padding: 0.4rem 0.8rem;
   border: 0;
   border-radius: 999px;
   background: var(--sun);
   color: var(--navy);
   font: inherit;
-  font-size: 0.9rem;
+  font-size: 0.82rem;
   font-weight: 800;
   box-shadow: 0 6px 16px -10px rgba(10, 46, 94, 0.45);
   cursor: pointer;
@@ -437,7 +437,7 @@
   display: flex;
   align-items: center;
   gap: 0.3rem;
-  padding: 0.3rem 0.3rem 0.3rem 1rem;
+  padding: 0.25rem 0.25rem 0.25rem 0.9rem;
   border: 1.5px solid var(--line);
   border-radius: 999px;
   background: #fff;
@@ -451,12 +451,12 @@
 .eva-input input {
   flex: 1;
   min-width: 0;
-  padding: 0.5rem 0;
+  padding: 0.4rem 0;
   border: 0;
   background: transparent;
   color: var(--navy-ink);
   font: inherit;
-  font-size: 1rem;
+  font-size: 0.92rem;
   font-weight: 500;
 }
 
@@ -471,8 +471,8 @@
 .eva-mic,
 .eva-send {
   flex: none;
-  width: 2.6rem;
-  height: 2.6rem;
+  width: 2.3rem;
+  height: 2.3rem;
   display: grid;
   place-items: center;
   border-radius: 50%;
@@ -671,9 +671,9 @@
 }
 
 /* En pantallas anchas deja lugar a la derecha para Eva */
-@media (min-width: 72rem) {
+@media (min-width: 64rem) {
   .eva-web {
-    right: 29rem;
+    right: 24.5rem;
   }
 }
 
@@ -803,7 +803,7 @@
   }
 
   .eva-pad {
-    width: 9.5rem;
+    width: 8rem;
   }
 
   .eva-thread {
