@@ -1,5 +1,6 @@
 import { useEffect, useEffectEvent, useRef, useState, useSyncExternalStore } from "react";
-import { useNavigate } from "react-router";
+import { createPortal } from "react-dom";
+import { useLocation, useNavigate } from "react-router";
 import EvaCharacter from "./EvaCharacter";
 import {
   canListen,
@@ -80,7 +81,46 @@ const MODES = [
   { id: "botones", label: "Con botones", hint: "Tocás opciones listas" },
 ];
 
-const QUICK = ["Navegá la página", "Leé la página", "Agrandá el texto", "Alto contraste", "¿Qué podés hacer?"];
+// Botones de pedidos rápidos: cada uno hace su acción directo (sin preguntarle a la IA)
+const CHIPS = {
+  program: ["Contame del programa", { type: "program" }],
+  themes: ["Mostrame las temáticas", { type: "tour", theme: null, home: true }],
+  team: ["Contame del equipo", { type: "sectionTour", section: "equipo" }],
+  tour: ["Navegá la página", { type: "tour", theme: null }],
+  first: ["Abrí el primer proyecto", { type: "open", index: 1 }],
+  read: ["Leé la página", { type: "read", selection: false }],
+  home: ["Llevame al inicio", { type: "go", to: "/", label: "al inicio" }],
+  next: ["Siguiente proyecto", { type: "page", dir: 1 }],
+  prev: ["Proyecto anterior", { type: "page", dir: -1 }],
+  closeWork: ["Cerrá el trabajo", { type: "closeWork", plain: false }],
+  bigger: ["Agrandá el texto", { type: "size", dir: 1 }],
+  smaller: ["Achicá el texto", { type: "size", dir: -1 }],
+  help: ["¿Qué podés hacer?", { type: "help" }],
+};
+
+// De a tres, según dónde está la persona; «Otras opciones» pasa al grupo siguiente
+function chipGroups(place, s) {
+  const chip = (id) => ({ id, label: CHIPS[id][0], intent: CHIPS[id][1] });
+  const toggle = (key, on, off) => ({ id: key, label: s[key] ? off : on, intent: { type: "toggle", key, value: null } });
+  const contrast = toggle("contrast", "Alto contraste", "Sacá el alto contraste");
+  const font = toggle("font", "Letra más legible", "Volvé a la letra de antes");
+  const links = toggle("links", "Resaltá los enlaces", "Sacá el resaltado de enlaces");
+  const extra = s.scale > 1 ? chip("smaller") : chip("help");
+  if (place === "home") {
+    return [
+      [chip("program"), chip("themes"), chip("team")],
+      [chip("read"), chip("bigger"), contrast],
+      [font, links, extra],
+    ];
+  }
+  const theme = [
+    [chip("tour"), chip("first"), chip("read")],
+    [chip("themes"), chip("program"), chip("home")],
+    [chip("bigger"), contrast, font],
+    [links, extra, chip("team")],
+  ];
+  return place === "work" ? [[chip("next"), chip("prev"), chip("closeWork")], ...theme] : theme;
+}
 
 const ABOUT =
   "EVA (Entornos Virtuales de Aprendizaje) es un programa donde estudiantes de San Martín idean y desarrollan " +
@@ -146,6 +186,14 @@ function subscribeVisibility(callback) {
 }
 const getVisible = () => document.visibilityState !== "hidden";
 
+// Si hay un trabajo abierto en la ventana del sitio (los botones ofrecen «siguiente», «anterior», «cerrar»)
+function subscribeViewer(callback) {
+  const watch = new MutationObserver(callback);
+  watch.observe(document.body, { subtree: true, childList: true, attributes: true, attributeFilter: ["open"] });
+  return () => watch.disconnect();
+}
+const getViewer = () => Boolean(openViewer());
+
 // Pantallas chicas (celular): la charla muestra solo lo último
 const COMPACT_QUERY = "(max-width: 40rem), (max-height: 30rem)";
 function subscribeCompact(callback) {
@@ -177,6 +225,7 @@ function isActionable(text) {
 
 function Assistant() {
   const navigate = useNavigate();
+  const { pathname } = useLocation();
   const [settings, setSettings] = useState(loadSettings);
   const [open, setOpen] = useState(false);
   const [view, setView] = useState("chat");
@@ -190,10 +239,12 @@ function Assistant() {
   const [draft, setDraft] = useState("");
   const [toast, setToast] = useState("");
   const [web, setWeb] = useState(null); // página web de un trabajo, mostrada adentro del sitio
+  const [chipTurn, setChipTurn] = useState({ place: "", n: 0 }); // qué grupo de botones se ve
   const [usedVoice, setUsedVoice] = useState(false);
   const systemReduced = useSyncExternalStore(subscribeMotion, getMotion, () => false);
   const visible = useSyncExternalStore(subscribeVisibility, getVisible, () => true);
   const compact = useSyncExternalStore(subscribeCompact, getCompact, () => false);
+  const viewerOpen = useSyncExternalStore(subscribeViewer, getViewer, () => false);
   const wakeEnabled = useWakeEnabled();
   const reduced = systemReduced || settings.pause;
 
@@ -1154,6 +1205,15 @@ function Assistant() {
     handleText(text);
   }
 
+  // Tocó un botón de pedido rápido: lo hace directo
+  function handleChip(chip) {
+    voiceSession.current = false;
+    lastByVoice.current = false;
+    window.clearTimeout(waitTimer.current);
+    addMessage("user", chip.label);
+    runIntent(chip.intent);
+  }
+
   function toggleMic(e) {
     // Celular: si la tocás mientras habla o lee, se calla y te escucha (no apaga la escucha)
     const queue = readQueue.current;
@@ -1178,7 +1238,7 @@ function Assistant() {
     setSettings((s) => ({ ...s, mode, voice }));
     addMessage("user", option.label);
 
-    let reply = "Listo. Tocá cualquiera de los botones de abajo.";
+    let reply = "Listo. Tocá un botón de abajo. Si no está lo que buscás, tocá «Otras opciones».";
     if (mode === "texto") reply = "Perfecto. Escribime acá abajo qué necesitás.";
     if (mode === "voz") {
       reply = canListen
@@ -1288,6 +1348,8 @@ function Assistant() {
   });
   const onTalkFatal = useEffectEvent((error) => {
     setMicOn(false);
+    // Sin micrófono no se le puede hablar: vuelve la caja para escribir
+    if (settingsRef.current.mode === "voz") setSettings((s) => ({ ...s, mode: "texto" }));
     voiceSession.current = false;
     lastByVoice.current = false;
     dropHold();
@@ -1336,6 +1398,8 @@ function Assistant() {
         closePanel();
       } else {
         setWakeEnabled(true);
+        // «Eva por voz»: queda en modo voz (solo Eva y la ruedita)
+        setSettings((s) => ({ ...s, mode: "voz", voice: true }));
         summon();
       }
       return;
@@ -1406,7 +1470,10 @@ function Assistant() {
   const hearing = Boolean(draft);
   const listeningNow = micLive && (hearing || (!speaking && !thinking));
   const charState = listeningNow ? "listening" : thinking ? "thinking" : speaking ? "speaking" : "idle";
-  let status = TAP_TO_TALK && canListen && !micOn ? "Tocá el micrófono para hablarme" : "Lista para ayudarte";
+  // Celular en modo «con la voz»: solo Eva y la ruedita (sin caja de texto ni micrófono); se le habla tocándola
+  const voiceOnly = TAP_TO_TALK && canListen && settings.mode === "voz";
+  let status = "Lista para ayudarte";
+  if (TAP_TO_TALK && canListen && !micOn) status = voiceOnly ? "Tocame para hablarme" : "Tocá el micrófono para hablarme";
   if (listeningNow) status = "Te escucho…";
   else if (thinking) status = "Pensando…";
   else if (reading === "tour") status = "Recorriendo la página…";
@@ -1422,11 +1489,30 @@ function Assistant() {
   // En el celular no entra toda la charla: solo lo último (lo que dijiste y lo que te contestó)
   const shown = compact ? lastTurn(messages, { draft, caption }) : messages;
 
-  const showChips =
-    view === "chat" && !reading && settings.mode && (settings.mode === "botones" || messages.length <= 2);
+  // Botones: tres opciones según la página (inicio, temática o con un trabajo abierto)
+  const place = web || viewerOpen ? "work" : pathname.startsWith("/tematicas/") ? "theme" : "home";
+  let turn = chipTurn.n;
+  if (chipTurn.place !== place) {
+    // Cambió de página: arranca por las opciones de esa página
+    setChipTurn({ place, n: 0 });
+    turn = 0;
+  }
+  const chipSets = chipGroups(place, settings);
+  const chips = chipSets[turn % chipSets.length];
 
-  return (
-    <div className="eva-assistant">
+  const showChips =
+    view === "chat" &&
+    !reading &&
+    !voiceOnly &&
+    settings.mode &&
+    (settings.mode === "botones" || messages.length <= 2);
+
+  // Con un trabajo abierto en la ventana del sitio, todo lo de afuera queda bloqueado (y tapado):
+  // Eva se muda adentro de esa ventana para que se la pueda seguir tocando
+  const viewerHost = viewerOpen ? openViewer() : null;
+
+  const ui = (
+    <div className={`eva-assistant${viewerHost ? " in-viewer" : ""}`}>
       <div className="eva-toast" role="status" aria-live="polite">
         {toast}
       </div>
@@ -1527,11 +1613,18 @@ function Assistant() {
 
           {showChips && (
             <div className="eva-chips" role="group" aria-label="Pedidos rápidos">
-              {QUICK.map((q) => (
-                <button key={q} type="button" className="eva-chip" onClick={() => handleTyped(q)}>
-                  {q}
+              {chips.map((chip) => (
+                <button key={chip.id} type="button" className="eva-chip" onClick={() => handleChip(chip)}>
+                  {chip.label}
                 </button>
               ))}
+              <button
+                type="button"
+                className="eva-chip eva-chip-more"
+                onClick={() => setChipTurn((t) => ({ place, n: t.n + 1 }))}
+              >
+                Otras opciones
+              </button>
             </div>
           )}
 
@@ -1578,37 +1671,40 @@ function Assistant() {
             </div>
           </div>
 
-          <form className="eva-input" onSubmit={onSubmit}>
-            <label htmlFor="eva-text" className="eva-sr">
-              Escribile a Eva
-            </label>
-            <input
-              id="eva-text"
-              ref={inputRef}
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              placeholder="Escribile a Eva…"
-              autoComplete="off"
-            />
-            <button
-              type="button"
-              className="eva-mic"
-              aria-pressed={micOn}
-              onClick={toggleMic}
-              aria-label={micLabel}
-              disabled={!canListen}
-              title={canListen ? undefined : "Tu navegador no permite dictar por voz"}
-            >
-              <MicIcon />
-            </button>
-            <button type="submit" className="eva-send" aria-label="Enviar">
-              <SendIcon />
-            </button>
-          </form>
+          {!voiceOnly && (
+            <form className="eva-input" onSubmit={onSubmit}>
+              <label htmlFor="eva-text" className="eva-sr">
+                Escribile a Eva
+              </label>
+              <input
+                id="eva-text"
+                ref={inputRef}
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                placeholder="Escribile a Eva…"
+                autoComplete="off"
+              />
+              <button
+                type="button"
+                className="eva-mic"
+                aria-pressed={micOn}
+                onClick={toggleMic}
+                aria-label={micLabel}
+                disabled={!canListen}
+                title={canListen ? undefined : "Tu navegador no permite dictar por voz"}
+              >
+                <MicIcon />
+              </button>
+              <button type="submit" className="eva-send" aria-label="Enviar">
+                <SendIcon />
+              </button>
+            </form>
+          )}
         </div>
       )}
     </div>
   );
+  return viewerHost ? createPortal(ui, viewerHost) : ui;
 }
 
 function SettingsView({ settings, wakeEnabled, onToggle, onScale, onReset, onChangeMode }) {

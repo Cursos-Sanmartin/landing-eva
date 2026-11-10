@@ -280,14 +280,9 @@
 /* Pedidos rápidos: una tira de botones redondeados */
 .eva-chips {
   display: flex;
+  flex-wrap: wrap;
   gap: 0.4rem;
-  overflow-x: auto;
   padding: 0.2rem 0.35rem 0.35rem;
-  scrollbar-width: none;
-}
-
-.eva-chips::-webkit-scrollbar {
-  display: none;
 }
 
 .eva-chip {
@@ -302,6 +297,13 @@
   font-weight: 700;
   box-shadow: 0 6px 16px -10px rgba(10, 46, 94, 0.45);
   cursor: pointer;
+}
+
+/* «Otras opciones»: cambia los botones por otros */
+.eva-chip-more {
+  border-style: dashed;
+  border-color: var(--cyan);
+  background: #f2fbff;
 }
 
 /* Eva, grande, con su estado al lado */
@@ -549,8 +551,10 @@
   gap: 1rem;
 }
 
-.eva-card-head h3 {
+.eva-dock .eva-card-head h3 {
   margin: 0;
+  line-height: 1.2;
+  letter-spacing: 0;
   font-size: 1.15rem;
   font-weight: 800;
   color: var(--navy);
@@ -931,4 +935,12 @@ html.eva-a11y-contrast .eva-status {
 
 html.eva-a11y-contrast .eva-pad:not(.is-listening) {
   border-color: #000;
+}
+
+/* Adentro de la ventana de un trabajo: en pantallas medianas y chicas, Eva queda arriba de la barra
+   de páginas del sitio (anterior · Página 1 de 3 · siguiente) para no taparla */
+@media (max-width: 64rem) {
+  .eva-assistant.in-viewer .eva-dock {
+    bottom: calc(max(0.75rem, env(safe-area-inset-bottom, 0px)) + 4rem);
+  }
 }
