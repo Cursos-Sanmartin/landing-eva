@@ -14,8 +14,8 @@ function Hero() {
       <div className="wrap hero-grid">
         <img
           className="badge-ca"
-          src="/comunidad-activa-blanco.png"
-          alt="Comunidad Activa"
+          src="/comunidad-que-cuida-blanco.svg"
+          alt="Comunidad que cuida"
         />
 
         <div className="hero-text">
