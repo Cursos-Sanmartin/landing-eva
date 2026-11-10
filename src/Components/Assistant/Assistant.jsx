@@ -6,6 +6,7 @@ import {
   canSpeak,
   listenForWakeWord,
   playChime,
+  recentSpoken,
   speak,
   speechState,
   spokenAround,
@@ -115,6 +116,15 @@ const HOLD_QUIET = 1500; // sin palabras nuevas por este tiempo: la persona term
 const HOLD_SETTLE = 600; // frase cerrada pero incompleta: un ratito por si sigue
 const HOLD_MAX = 8000; // como mucho escucha una frase este tiempo
 const PAUSE_WAIT = 8000; // recorrido en pausa: si no le piden nada, sigue
+
+// En el celular el parlante y el micrófono están pegados: Eva se oiría a sí misma. Ahí se turnan:
+// mientras Eva habla el micrófono se apaga, y se vuelve a prender cuando termina.
+const HALF_DUPLEX =
+  typeof window !== "undefined" &&
+  (/Android|iPhone|iPad|iPod|Mobile/i.test(window.navigator?.userAgent || "") ||
+    Boolean(window.matchMedia?.("(pointer: coarse)").matches));
+const MOBILE_GAP_TOUR = 2500; // en el celular, más tiempo entre proyecto y proyecto para hablar
+const MOBILE_ECHO_IGNORE = 1500; // lo que llega apenas Eva se calla, en el celular, se ignora
 
 function greeting(mode) {
   if (!mode) {
@@ -249,6 +259,8 @@ function Assistant() {
       onEnd: () => {
         if (speakId.current !== id) return;
         setSpeaking(false);
+        // En el celular, después de hablar vuelve a escuchar
+        if (HALF_DUPLEX && voiceSession.current && canListen) setMicOn(true);
         after?.();
       },
     });
@@ -570,7 +582,7 @@ function Assistant() {
       node: null,
       after: null,
       kind: "tour",
-      gap: GAP_TOUR,
+      gap: HALF_DUPLEX ? MOBILE_GAP_TOUR : GAP_TOUR,
       currentCard: null,
       prevCard: null,
       cardAt: 0,
@@ -780,7 +792,7 @@ function Assistant() {
       ...blocks,
       { text: `Así se arma tu proyecto en EVA, paso a paso. ${DONE.replace("Listo. ", "")}`, log: true },
     ];
-    readQueue.current = { list, i: 0, node: null, after: null, kind: "program", gap: GAP_TOUR };
+    readQueue.current = { list, i: 0, node: null, after: null, kind: "program", gap: HALF_DUPLEX ? MOBILE_GAP_TOUR : GAP_TOUR };
     setReading("tour");
     readNext();
   }
@@ -792,6 +804,10 @@ function Assistant() {
   // de la persona, Eva se calla, junta la frase completa y recién ahí hace el pedido.
 
   function onHeard(raw, isFinal, heardAt, key) {
+    if (HALF_DUPLEX && !hold.current) {
+      const { talking, quietAt } = speechState();
+      if (talking || heardAt - quietAt < MOBILE_ECHO_IGNORE) return;
+    }
     const t = normalize(raw);
     const words = t ? t.split(" ") : [];
     let seg = segs.current.get(key);
@@ -883,12 +899,26 @@ function Assistant() {
     return clean || text;
   }
 
+  // ¿Lo que «escuchó» es casi todo lo que Eva acaba de decir? Entonces es su propia voz que volvió
+  function looksLikeEcho(text) {
+    const words = normalize(text)
+      .split(" ")
+      .filter((w) => w.length >= 3);
+    if (words.length < 3) return false;
+    const eva = new Set(normalize(recentSpoken(3)).split(" "));
+    return words.filter((w) => eva.has(w)).length / words.length >= 0.8;
+  }
+
   // Terminó de hablar: hace el pedido
   function finishHold() {
     const h = hold.current;
     if (!h) return;
     const text = clearText([...h.parts.values()].filter(Boolean).join(" ").trim());
     dropHold();
+    if (looksLikeEcho(text)) {
+      if (readQueue.current.paused) resumeReading(0);
+      return;
+    }
     if (readQueue.current.paused) {
       setReading("paused");
       if (text) handlePausedCommand(text);
@@ -1186,8 +1216,11 @@ function Assistant() {
   // "wake": solo la frase para llamarla (con «Eva por voz» prendido en el header).
   let micMode = null;
   if (canListen && visible) {
-    if (micOn && (open || reading)) micMode = "talk";
-    else if (wakeEnabled) micMode = "wake";
+    if (micOn && (open || reading)) {
+      // En el celular: mientras Eva habla (o lee la página) el micrófono descansa
+      const evaBusy = speaking || reading === "page";
+      micMode = HALF_DUPLEX && evaBusy ? null : "talk";
+    } else if (wakeEnabled && !(HALF_DUPLEX && speaking)) micMode = "wake";
   }
 
   const onWake = useEffectEvent(() => summon());
@@ -1204,6 +1237,12 @@ function Assistant() {
     showToast(WAKE_ERRORS[error] || WAKE_ERRORS["not-allowed"]);
   });
   const onTalk = useEffectEvent((raw, isFinal, heardAt, key) => onHeard(raw, isFinal, heardAt, key));
+  // Celular: si nadie habla un rato, apaga el micrófono (se vuelve a prender tocándolo o cuando Eva responde)
+  const onTalkIdle = useEffectEvent(() => {
+    if (readQueue.current.list.length || hold.current || thinking) return false;
+    setMicOn(false);
+    return true;
+  });
   const onTalkFatal = useEffectEvent((error) => {
     setMicOn(false);
     voiceSession.current = false;
@@ -1237,6 +1276,8 @@ function Assistant() {
             },
             onReady: () => setWakeLive(true),
             onFatal: (error) => onTalkFatal(error),
+            maxIdle: HALF_DUPLEX ? 2 : 0,
+            onIdle: () => onTalkIdle(),
           });
     return () => {
       stop();
@@ -1312,7 +1353,7 @@ function Assistant() {
   const hearing = Boolean(draft);
   const listeningNow = micLive && (hearing || (!speaking && !thinking));
   const charState = listeningNow ? "listening" : thinking ? "thinking" : speaking ? "speaking" : "idle";
-  let status = "Lista para ayudarte";
+  let status = HALF_DUPLEX && canListen && !micOn ? "Tocá el micrófono para hablarme" : "Lista para ayudarte";
   if (listeningNow) status = "Te escucho…";
   else if (thinking) status = "Pensando…";
   else if (reading === "tour") status = "Recorriendo la página…";

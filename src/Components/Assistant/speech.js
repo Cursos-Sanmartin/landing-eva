@@ -67,6 +67,14 @@ function saidEnd(entry, cut) {
   if (!cut && ms > 800) charsPerSecond = charsPerSecond * 0.6 + (entry.text.length / ms) * 1000 * 0.4;
 }
 
+// Lo último que dijo Eva (las últimas n frases), para reconocer su voz si el micrófono la vuelve a oír
+export function recentSpoken(n = 3) {
+  return said
+    .slice(-n)
+    .map((entry) => entry.text)
+    .join(" ");
+}
+
 // Lo que Eva dijo entre at − back y at + ahead (milisegundos), estimando por el tiempo
 // qué parte de cada frase sonó en ese rato. Se agranda a palabras enteras.
 export function spokenAround(at, back = 5000, ahead = 2000) {
@@ -288,7 +296,9 @@ let sessions = 0;
 // match(texto, esFinal, momento, clave): se llama con cada cosa que va entendiendo; la clave
 // identifica cada frase mientras Chrome la completa. Si devuelve true, se deja de escuchar.
 // onReady: el micrófono quedó escuchando. onFatal(error): no se puede escuchar (sin permiso, sin micrófono).
-export function listenForWakeWord({ match, onWake, onReady, onFatal }) {
+// maxIdle / onIdle: si varias escuchas seguidas terminan sin oír nada, pregunta a onIdle si hay que parar
+// (en el celular, así el micrófono no queda prendiéndose y apagándose solo).
+export function listenForWakeWord({ match, onWake, onReady, onFatal, maxIdle = 0, onIdle }) {
   if (!Recognition) {
     onFatal?.("unsupported");
     return () => {};
@@ -299,6 +309,8 @@ export function listenForWakeWord({ match, onWake, onReady, onFatal }) {
   let retries = 0;
   let startedAt = 0;
   let announced = false;
+  let idle = 0;
+  let heard = false;
 
   const startOne = () => {
     if (stopped) return;
@@ -309,6 +321,7 @@ export function listenForWakeWord({ match, onWake, onReady, onFatal }) {
     rec.continuous = true;
     rec.interimResults = true;
     rec.maxAlternatives = 1;
+    heard = false;
     rec.onstart = () => {
       startedAt = now();
       if (!announced) {
@@ -318,6 +331,7 @@ export function listenForWakeWord({ match, onWake, onReady, onFatal }) {
     };
     rec.onresult = (e) => {
       retries = 0;
+      heard = true;
       for (let i = e.resultIndex; i < e.results.length; i++) {
         if (match(e.results[i][0].transcript, e.results[i].isFinal, e.timeStamp, `${mySession}:${i}`)) {
           stopped = true;
@@ -339,6 +353,14 @@ export function listenForWakeWord({ match, onWake, onReady, onFatal }) {
     };
     rec.onend = () => {
       if (stopped) return;
+      idle = heard ? 0 : idle + 1;
+      if (maxIdle && idle >= maxIdle) {
+        if (onIdle?.()) {
+          stopped = true;
+          return;
+        }
+        idle = 0;
+      }
       // Si se corta enseguida (red, silencio), esperamos cada vez un poco más
       retries = now() - startedAt < 1500 ? retries + 1 : 0;
       timer = window.setTimeout(startOne, Math.min(10000, 300 * 2 ** retries));
