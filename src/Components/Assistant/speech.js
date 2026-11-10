@@ -16,6 +16,13 @@ const now = () => (typeof performance !== "undefined" ? performance.now() : Date
 const ANDROID = typeof navigator !== "undefined" && /Android/i.test(navigator.userAgent || "");
 const plain = (t) => String(t || "").trim().toLowerCase();
 
+// Celular o tablet: en Android cada vez que se prende el micrófono suena un pitido (la página no lo puede
+// sacar), así que no puede quedar escuchando solo. Ahí se habla tocando: el micrófono o a Eva.
+export const TAP_TO_TALK =
+  typeof window !== "undefined" &&
+  (/Android|iPhone|iPad|iPod|Mobile/i.test(window.navigator?.userAgent || "") ||
+    Boolean(window.matchMedia?.("(pointer: coarse)").matches));
+
 let voices = [];
 function loadVoices() {
   try {
@@ -303,7 +310,8 @@ let sessions = 0;
 // onReady: el micrófono quedó escuchando. onFatal(error): no se puede escuchar (sin permiso, sin micrófono).
 // maxIdle / onIdle: si varias escuchas seguidas terminan sin oír nada, pregunta a onIdle si hay que parar
 // (en el celular, así el micrófono no queda prendiéndose y apagándose solo).
-export function listenForWakeWord({ match, onWake, onReady, onFatal, maxIdle = 0, onIdle }) {
+// once: escucha una sola vez (una frase o un rato de silencio) y avisa con onDone, sin volver a empezar
+export function listenForWakeWord({ match, onWake, onReady, onFatal, once = false, onDone }) {
   if (!Recognition) {
     onFatal?.("unsupported");
     return () => {};
@@ -314,8 +322,6 @@ export function listenForWakeWord({ match, onWake, onReady, onFatal, maxIdle = 0
   let retries = 0;
   let startedAt = 0;
   let announced = false;
-  let idle = 0;
-  let heard = false;
 
   const startOne = () => {
     if (stopped) return;
@@ -326,7 +332,6 @@ export function listenForWakeWord({ match, onWake, onReady, onFatal, maxIdle = 0
     rec.continuous = true;
     rec.interimResults = true;
     rec.maxAlternatives = 1;
-    heard = false;
     // Cada frase tiene su clave. En Android, los pedacitos de una misma frase llegan en lugares
     // distintos de la lista: los juntamos en la misma clave para que sea un solo pedido (y un solo globito)
     const keys = new Map();
@@ -340,7 +345,6 @@ export function listenForWakeWord({ match, onWake, onReady, onFatal, maxIdle = 0
     };
     rec.onresult = (e) => {
       retries = 0;
-      heard = true;
       for (let i = e.resultIndex; i < e.results.length; i++) {
         const result = e.results[i];
         const text = result[0].transcript;
@@ -375,13 +379,10 @@ export function listenForWakeWord({ match, onWake, onReady, onFatal, maxIdle = 0
     };
     rec.onend = () => {
       if (stopped) return;
-      idle = heard ? 0 : idle + 1;
-      if (maxIdle && idle >= maxIdle) {
-        if (onIdle?.()) {
-          stopped = true;
-          return;
-        }
-        idle = 0;
+      if (once) {
+        stopped = true;
+        onDone?.();
+        return;
       }
       // Si se corta enseguida (red, silencio), esperamos cada vez un poco más
       retries = now() - startedAt < 1500 ? retries + 1 : 0;

@@ -332,6 +332,21 @@
   width: 100%;
 }
 
+/* Celular: Eva se toca para hablarle */
+.eva-pad-tap {
+  display: block;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 1.6rem;
+  background: none;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
 /* Aro con los colores de la marca mientras escucha */
 .eva-pad.is-listening {
   background:

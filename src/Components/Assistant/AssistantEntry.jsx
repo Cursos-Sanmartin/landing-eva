@@ -1,6 +1,7 @@
 import { useId } from "react";
 import { requestOpen, toggleWakeByUser, useWakeEnabled, useWakeLive } from "./assistantStore";
 import { WAKE_PHRASE } from "./commands";
+import { TAP_TO_TALK } from "./speech";
 import "./Assistant.css";
 
 // Puertas de entrada al asistente, que no se ve hasta que lo llaman.
@@ -18,7 +19,11 @@ export function VoiceSwitch({ className = "" }) {
       aria-label="Eva por voz"
       aria-describedby={hintId}
       className={`eva-voice-switch${live ? " is-live" : ""}${className ? ` ${className}` : ""}`}
-      title={`Eva por voz: decí «${WAKE_PHRASE}» para llamar a la asistente`}
+      title={
+        TAP_TO_TALK
+          ? "Eva por voz: tocá para hablar con la asistente"
+          : `Eva por voz: decí «${WAKE_PHRASE}» para llamar a la asistente`
+      }
       onClick={() => toggleWakeByUser(!enabled)}
     >
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" aria-hidden="true">
@@ -29,9 +34,13 @@ export function VoiceSwitch({ className = "" }) {
         <span />
       </span>
       <span id={hintId} className="eva-sr">
-        {enabled
-          ? `Activado. Decí «${WAKE_PHRASE}» para llamar a la asistente.`
-          : `Al activarlo, la asistente aparece cuando decís «${WAKE_PHRASE}».`}
+        {TAP_TO_TALK
+          ? enabled
+            ? "Activado. Para hablarle, tocá el micrófono o a Eva."
+            : "Al activarlo, aparece la asistente y te escucha."
+          : enabled
+            ? `Activado. Decí «${WAKE_PHRASE}» para llamar a la asistente.`
+            : `Al activarlo, la asistente aparece cuando decís «${WAKE_PHRASE}».`}
       </span>
     </button>
   );

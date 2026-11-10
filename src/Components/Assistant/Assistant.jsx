@@ -9,6 +9,7 @@ import {
   recentSpoken,
   speak,
   speechState,
+  TAP_TO_TALK,
   spokenAround,
   stopSpeaking,
 } from "./speech";
@@ -25,7 +26,6 @@ import {
 import {
   THEME_NAMES,
   WAKE_PHRASE,
-  bargeTest,
   freshTest,
   interpret,
   isAttention,
@@ -118,14 +118,8 @@ const HOLD_SETTLE = 600; // frase cerrada pero incompleta: un ratito por si sigu
 const HOLD_MAX = 8000; // como mucho escucha una frase este tiempo
 const PAUSE_WAIT = 8000; // recorrido en pausa: si no le piden nada, sigue
 
-// En el celular el parlante y el micrófono están pegados: Eva se oye a sí misma. Ahí, mientras habla,
-// solo la frenan palabras cortas como «pará», «Eva» o «basta» (que no esté diciendo ella); lo demás se ignora.
-const HALF_DUPLEX =
-  typeof window !== "undefined" &&
-  (/Android|iPhone|iPad|iPod|Mobile/i.test(window.navigator?.userAgent || "") ||
-    Boolean(window.matchMedia?.("(pointer: coarse)").matches));
-const MOBILE_GAP_TOUR = 2500; // en el celular, más tiempo entre proyecto y proyecto para hablar
-const MOBILE_ECHO_IGNORE = 1500; // lo que llega apenas Eva se calla, en el celular, se ignora
+// En el celular (TAP_TO_TALK) se habla tocando el micrófono o a Eva: cada toque es una escucha.
+// Mientras Eva habla el micrófono está apagado; si la tocás, se calla y te escucha.
 
 function greeting(mode) {
   if (!mode) {
@@ -282,8 +276,6 @@ function Assistant() {
       onEnd: () => {
         if (speakId.current !== id) return;
         setSpeaking(false);
-        // En el celular, después de hablar vuelve a escuchar
-        if (HALF_DUPLEX && voiceSession.current && canListen) setMicOn(true);
         after?.();
       },
     });
@@ -325,6 +317,8 @@ function Assistant() {
   function stopAll() {
     hush();
     dropHold();
+    // Celular: «Detener» deja todo en silencio, también el micrófono
+    if (TAP_TO_TALK) setMicOn(false);
     aiToken.current += 1;
     setThinking(false);
     window.clearTimeout(waitTimer.current);
@@ -407,8 +401,7 @@ function Assistant() {
     const wait = big ? queue.gap : queue.smallGap;
     if (wait && !first && !queue.skipGap) {
       queue.inGap = true;
-      // En el celular, las pausas cortas no prenden el micrófono (solo las largas, para poder frenarla)
-      if (big || !HALF_DUPLEX) setSpeaking(false);
+      setSpeaking(false);
       window.setTimeout(go, wait);
     } else {
       go();
@@ -553,7 +546,7 @@ function Assistant() {
       say("No encontré texto para leer en esta página.");
       return;
     }
-    if (canTalk()) setMicOn(true);
+    if (canTalk() && !TAP_TO_TALK) setMicOn(true);
     // Cada trabajo o sección es un grupo: entre grupos hace la pausa larga
     let prevGroup;
     list.forEach((block, i) => {
@@ -567,8 +560,8 @@ function Assistant() {
       node: null,
       after: null,
       kind: "page",
-      gap: HALF_DUPLEX ? MOBILE_GAP_TOUR : GAP_TOUR,
-      smallGap: HALF_DUPLEX ? 300 : 500,
+      gap: GAP_TOUR,
+      smallGap: 500,
     };
     setReading("page");
     readNext();
@@ -617,14 +610,14 @@ function Assistant() {
       outro = "¿A cuál querés entrar? Decime, por ejemplo, «llevame a robótica» o «entrá a la primera».";
     }
     list.push({ text: outro, log: true });
-    if (canTalk()) setMicOn(true);
+    if (canTalk() && !TAP_TO_TALK) setMicOn(true);
     readQueue.current = {
       list,
       i: 0,
       node: null,
       after: null,
       kind: "tour",
-      gap: HALF_DUPLEX ? MOBILE_GAP_TOUR : GAP_TOUR,
+      gap: GAP_TOUR,
       currentCard: null,
       prevCard: null,
       cardAt: 0,
@@ -789,7 +782,7 @@ function Assistant() {
       say("No encontré esa sección en la página.");
       return;
     }
-    if (canTalk()) setMicOn(true);
+    if (canTalk() && !TAP_TO_TALK) setMicOn(true);
     const intro = section === "equipo" ? "Te presento al equipo." : "Te cuento esta sección.";
     readQueue.current = {
       list: [{ text: intro, log: true }, ...blocks, { text: "¿En qué más te puedo ayudar?", log: true }],
@@ -828,13 +821,13 @@ function Assistant() {
       say(ABOUT);
       return;
     }
-    if (canTalk()) setMicOn(true);
+    if (canTalk() && !TAP_TO_TALK) setMicOn(true);
     const list = [
       { text: "Te cuento de qué se trata el programa.", log: true },
       ...blocks,
       { text: `Así se arma tu proyecto en EVA, paso a paso. ${DONE.replace("Listo. ", "")}`, log: true },
     ];
-    readQueue.current = { list, i: 0, node: null, after: null, kind: "program", gap: HALF_DUPLEX ? MOBILE_GAP_TOUR : GAP_TOUR };
+    readQueue.current = { list, i: 0, node: null, after: null, kind: "program", gap: GAP_TOUR };
     setReading("tour");
     readNext();
   }
@@ -848,60 +841,39 @@ function Assistant() {
   function onHeard(raw, isFinal, heardAt, key) {
     const t = normalize(raw);
     const words = t ? t.split(" ") : [];
-    const { talking, quietAt } = speechState();
-    const since = heardAt - quietAt;
-    // En el celular el micrófono oye fuerte a Eva: mientras habla (y un ratito después) solo la frenan
-    // palabras como «Eva», «pará» o «basta», y solo si no las está diciendo ella. Así no se escucha a sí misma.
-    const barge = HALF_DUPLEX && !hold.current && (talking || since < MOBILE_ECHO_IGNORE);
     let seg = segs.current.get(key);
     if (!seg) {
-      // late: empezó apenas Eva se calló (puede ser la persona contestando rápido o lo último de su voz)
-      seg = { checked: 0, from: -1, used: 0, count: 0, echo: barge, late: barge && !talking, attention: false };
+      seg = { checked: 0, from: -1, used: 0, count: 0 };
       segs.current.set(key, seg);
       if (segs.current.size > 60) segs.current.delete(segs.current.keys().next().value);
     }
-    // Pasado ese ratito, la frase que empezó apenas se calló se revisa entera: si no es su voz, es un pedido
-    if (seg.late && !barge && seg.from < 0) {
-      seg.late = false;
-      seg.checked = 0;
-    }
     // Palabras nuevas de esta frase: ¿la primera de la persona?
     if (seg.from < 0 && words.length > seg.checked) {
+      const { talking, quietAt } = speechState();
+      const since = heardAt - quietAt;
       let isUser = () => true;
-      if (barge) {
-        isUser = bargeTest(normalize(spokenAround(heardAt, 4000, 1500)));
-      } else if (talking || since < ECHO_TAIL) {
+      if (talking || since < ECHO_TAIL) {
         isUser = freshTest(normalize(spokenAround(heardAt)));
-      } else if (seg.echo && !hold.current) {
-        // La frase empezó con la voz de Eva (celular): lo que sigue cuenta si no se parece a lo que ella dijo
-        isUser = freshTest(normalize(spokenAround(quietAt, 6000, 0)));
       } else if (!hold.current && since < ECHO_GRACE) {
         const echo = lateEchoTest(normalize(spokenAround(quietAt, 1000, 0)));
         isUser = (w) => !echo(w);
       }
       for (let i = seg.checked; i < words.length; i++) {
-        // «Eva», «¿estás ahí?»: lo que queda de llamarla no es un pedido (salvo para frenarla en el celular)
-        if (isUser(words[i]) && (barge || !isCallWord(words[i]))) {
+        // «Eva», «¿estás ahí?»: lo que queda de llamarla no es un pedido
+        if (isUser(words[i]) && !isCallWord(words[i])) {
           seg.from = i;
-          seg.attention = barge;
           break;
         }
       }
       seg.checked = seg.from >= 0 ? seg.from : words.length;
     }
     seg.count = words.length;
-    let said = "";
-    if (seg.from >= 0) {
-      const rest = words.slice(Math.max(seg.from, seg.used)).join(" ");
-      // Para frenarla en el celular, «Eva» cuenta: se saca al final, junto con lo último de su voz
-      said = seg.attention ? rest : withoutCall(rest);
-    }
+    const said = seg.from < 0 ? "" : withoutCall(words.slice(Math.max(seg.from, seg.used)).join(" "));
 
     let h = hold.current;
     if (!h) {
       if (!said) return;
       h = beginHold(heardAt);
-      h.barge = seg.attention;
     }
     if (said || h.parts.has(key)) h.parts.set(key, said);
     if (isFinal) h.finals.add(key);
@@ -969,30 +941,17 @@ function Assistant() {
   }
 
   // Terminó de hablar: hace el pedido
-  // Celular: después de frenarla, el micrófono todavía escribe un instante lo último que ella decía
-  // («basta desde cero» → «basta»)
-  function withoutTail(text) {
-    const echo = lateEchoTest(normalize(spokenAround(speechState().quietAt, 2000, 0)));
-    const words = text.split(" ");
-    let n = words.length;
-    while (n > 1 && echo(normalize(words[n - 1]))) n -= 1;
-    return words.slice(0, n).join(" ");
-  }
-
   // Lo que dijo la persona hasta ahora, sin lo que se coló de la voz de Eva
   function holdText(h) {
-    let text = [...h.parts.values()].filter(Boolean).join(" ").trim();
-    if (h.barge && text) {
-      text = withoutTail(text);
-      text = withoutCall(text) || text; // «Eva, llevame al equipo» → «llevame al equipo»; «Eva» sola queda
-    }
-    return clearText(text);
+    return clearText([...h.parts.values()].filter(Boolean).join(" ").trim());
   }
 
   function finishHold() {
     const h = hold.current;
     if (!h) return;
     const text = holdText(h);
+    // Celular: esa escucha ya se usó; para seguir hablando, se vuelve a tocar
+    if (TAP_TO_TALK) setMicOn(false);
     dropHold();
     if (looksLikeEcho(text)) {
       if (readQueue.current.paused) resumeReading(0);
@@ -1195,8 +1154,11 @@ function Assistant() {
     handleText(text);
   }
 
-  function toggleMic() {
-    if (micOn) {
+  function toggleMic(e) {
+    // Celular: si la tocás mientras habla o lee, se calla y te escucha (no apaga la escucha)
+    const queue = readQueue.current;
+    const interrupt = TAP_TO_TALK && (speaking || (queue.list.length > 0 && !queue.paused));
+    if (micOn && !interrupt) {
       setMicOn(false);
       voiceSession.current = false;
       dropHold();
@@ -1205,6 +1167,8 @@ function Assistant() {
     setUsedVoice(true);
     setMicOn(true);
     if (!readQueue.current.list.length) hush();
+    // Celular: para escucharte frena la lectura (si no decís nada, después sigue sola)
+    else if (TAP_TO_TALK) pauseAtCurrent(e?.timeStamp ?? Number.POSITIVE_INFINITY, true);
   }
 
   function chooseMode(mode) {
@@ -1275,6 +1239,8 @@ function Assistant() {
     setOpen(false);
     setMicOn(false);
     voiceSession.current = false;
+    // Celular: el interruptor del header muestra si Eva está abierta
+    if (TAP_TO_TALK) setWakeEnabled(false);
     window.clearTimeout(thinkTimer.current);
     setThinking(false);
     const back = returnFocus.current;
@@ -1293,11 +1259,11 @@ function Assistant() {
 
   // "talk": Eva está abierta (o leyendo) y la persona usa la voz: escucha todo, sin cortar.
   // "wake": solo la frase para llamarla (con «Eva por voz» prendido en el header).
+  // En el celular no hay escucha de fondo: solo la que se pide tocando, y nunca mientras Eva habla.
   let micMode = null;
   if (canListen && visible) {
-    // En el celular sigue escuchando mientras Eva habla, pero ahí solo le hacen caso «pará», «Eva», «basta»…
-    if (micOn && (open || reading)) micMode = "talk";
-    else if (wakeEnabled && !(HALF_DUPLEX && speaking)) micMode = "wake";
+    if (micOn && (open || reading) && !(TAP_TO_TALK && speaking)) micMode = "talk";
+    else if (wakeEnabled && !TAP_TO_TALK) micMode = "wake";
   }
 
   const onWake = useEffectEvent(() => summon());
@@ -1314,11 +1280,11 @@ function Assistant() {
     showToast(WAKE_ERRORS[error] || WAKE_ERRORS["not-allowed"]);
   });
   const onTalk = useEffectEvent((raw, isFinal, heardAt, key) => onHeard(raw, isFinal, heardAt, key));
-  // Celular: si nadie habla un rato, apaga el micrófono (se vuelve a prender tocándolo o cuando Eva responde)
-  const onTalkIdle = useEffectEvent(() => {
-    if (readQueue.current.list.length || hold.current || thinking) return false;
+  // Celular: terminó la escucha que se pidió tocando. El micrófono queda apagado hasta el próximo toque;
+  // si estaba leyendo y no le pidieron nada, después de un rato sigue.
+  const onTurnEnd = useEffectEvent(() => {
     setMicOn(false);
-    return true;
+    if (!hold.current && readQueue.current.paused) waitInPause();
   });
   const onTalkFatal = useEffectEvent((error) => {
     setMicOn(false);
@@ -1353,8 +1319,8 @@ function Assistant() {
             },
             onReady: () => setWakeLive(true),
             onFatal: (error) => onTalkFatal(error),
-            maxIdle: HALF_DUPLEX ? 2 : 0,
-            onIdle: () => onTalkIdle(),
+            once: TAP_TO_TALK,
+            onDone: () => onTurnEnd(),
           });
     return () => {
       stop();
@@ -1364,6 +1330,16 @@ function Assistant() {
 
   // Interruptor del header y pedidos de abrir desde afuera
   const onUserToggle = useEffectEvent((value) => {
+    // Celular: no hay escucha de fondo. El interruptor abre a Eva (saluda y te escucha) o la cierra.
+    if (TAP_TO_TALK && canListen) {
+      if (open) {
+        closePanel();
+      } else {
+        setWakeEnabled(true);
+        summon();
+      }
+      return;
+    }
     if (!value) {
       announceWake.current = false;
       showToast("Listo, Eva ya no escucha.");
@@ -1430,7 +1406,7 @@ function Assistant() {
   const hearing = Boolean(draft);
   const listeningNow = micLive && (hearing || (!speaking && !thinking));
   const charState = listeningNow ? "listening" : thinking ? "thinking" : speaking ? "speaking" : "idle";
-  let status = HALF_DUPLEX && canListen && !micOn ? "Tocá el micrófono para hablarme" : "Lista para ayudarte";
+  let status = TAP_TO_TALK && canListen && !micOn ? "Tocá el micrófono para hablarme" : "Lista para ayudarte";
   if (listeningNow) status = "Te escucho…";
   else if (thinking) status = "Pensando…";
   else if (reading === "tour") status = "Recorriendo la página…";
@@ -1438,7 +1414,10 @@ function Assistant() {
   else if (reading) status = "Esperando tu pedido…";
   else if (speaking) status = "Hablando…";
   // En el celular, mientras habla, cómo frenarla
-  if (HALF_DUPLEX && micLive && speaking && !hearing && !thinking) status = "Decí «pará» para frenarme";
+  if (TAP_TO_TALK && canListen && speaking && !thinking) status = "Tocame para interrumpirme";
+
+  const interrupts = TAP_TO_TALK && (speaking || (Boolean(reading) && reading !== "paused"));
+  const micLabel = interrupts ? "Interrumpir a Eva y hablarle" : micOn ? "Apagar el micrófono" : "Hablarle a Eva";
 
   // En el celular no entra toda la charla: solo lo último (lo que dijiste y lo que te contestó)
   const shown = compact ? lastTurn(messages, { draft, caption }) : messages;
@@ -1558,7 +1537,14 @@ function Assistant() {
 
           <div className="eva-stage">
             <div className={`eva-pad${listeningNow ? " is-listening" : ""}`}>
-              <EvaCharacter state={charState} talking={speaking} reduced={reduced} dots />
+              {TAP_TO_TALK && canListen ? (
+                // Celular: tocar a Eva es como tocar el micrófono
+                <button type="button" className="eva-pad-tap" onClick={toggleMic} aria-label={micLabel}>
+                  <EvaCharacter state={charState} talking={speaking} reduced={reduced} dots />
+                </button>
+              ) : (
+                <EvaCharacter state={charState} talking={speaking} reduced={reduced} dots />
+              )}
             </div>
             <div className="eva-side">
               <div className="eva-tools">
@@ -1609,7 +1595,7 @@ function Assistant() {
               className="eva-mic"
               aria-pressed={micOn}
               onClick={toggleMic}
-              aria-label={micOn ? "Apagar el micrófono" : "Hablarle a Eva"}
+              aria-label={micLabel}
               disabled={!canListen}
               title={canListen ? undefined : "Tu navegador no permite dictar por voz"}
             >
@@ -1665,7 +1651,11 @@ function SettingsView({ settings, wakeEnabled, onToggle, onScale, onReset, onCha
         <span className="eva-row-text">
           Llamarla con la voz
           <small>
-            {wakeEnabled ? `Activado: decí «${WAKE_PHRASE}»` : "Se activa con «Eva por voz» arriba de todo"}
+            {TAP_TO_TALK
+              ? "En el celular: tocá el micrófono o a Eva para hablarle"
+              : wakeEnabled
+                ? `Activado: decí «${WAKE_PHRASE}»`
+                : "Se activa con «Eva por voz» arriba de todo"}
           </small>
         </span>
       </div>
