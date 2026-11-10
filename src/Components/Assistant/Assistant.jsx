@@ -379,10 +379,14 @@ function Assistant() {
     };
     // Entre proyecto y proyecto hace una pausa: mientras Eva habla, muchas compus
     // bajan el micrófono para no oírla, así que en la pausa se oye mejor a la persona
-    if (queue.gap && !first && !queue.skipGap) {
+    // Al leer la página: pausa larga entre un trabajo (o sección) y el siguiente, corta dentro del mismo
+    const big = !queue.smallGap || block.breakBefore;
+    const wait = big ? queue.gap : queue.smallGap;
+    if (wait && !first && !queue.skipGap) {
       queue.inGap = true;
-      setSpeaking(false);
-      window.setTimeout(go, queue.gap);
+      // En el celular, las pausas cortas no prenden el micrófono (solo las largas, para poder frenarla)
+      if (big || !HALF_DUPLEX) setSpeaking(false);
+      window.setTimeout(go, wait);
     } else {
       go();
     }
@@ -527,7 +531,22 @@ function Assistant() {
       return;
     }
     if (canTalk()) setMicOn(true);
-    readQueue.current = { list, i: 0, node: null, after: null, kind: "page", gap: GAP_PAGE };
+    // Cada trabajo o sección es un grupo: entre grupos hace la pausa larga
+    let prevGroup;
+    list.forEach((block, i) => {
+      const group = block.node?.closest?.("article, section") || null;
+      block.breakBefore = i > 0 && group !== prevGroup;
+      prevGroup = group;
+    });
+    readQueue.current = {
+      list,
+      i: 0,
+      node: null,
+      after: null,
+      kind: "page",
+      gap: HALF_DUPLEX ? MOBILE_GAP_TOUR : GAP_TOUR,
+      smallGap: HALF_DUPLEX ? 300 : 500,
+    };
     setReading("page");
     readNext();
   }
@@ -1217,9 +1236,8 @@ function Assistant() {
   let micMode = null;
   if (canListen && visible) {
     if (micOn && (open || reading)) {
-      // En el celular: mientras Eva habla (o lee la página) el micrófono descansa
-      const evaBusy = speaking || reading === "page";
-      micMode = HALF_DUPLEX && evaBusy ? null : "talk";
+      // En el celular: mientras Eva habla el micrófono descansa (se prende en las pausas)
+      micMode = HALF_DUPLEX && speaking ? null : "talk";
     } else if (wakeEnabled && !(HALF_DUPLEX && speaking)) micMode = "wake";
   }
 
