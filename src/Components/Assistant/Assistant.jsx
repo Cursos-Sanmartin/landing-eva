@@ -25,6 +25,7 @@ import {
 import {
   THEME_NAMES,
   WAKE_PHRASE,
+  bargeTest,
   freshTest,
   interpret,
   isAttention,
@@ -117,8 +118,8 @@ const HOLD_SETTLE = 600; // frase cerrada pero incompleta: un ratito por si sigu
 const HOLD_MAX = 8000; // como mucho escucha una frase este tiempo
 const PAUSE_WAIT = 8000; // recorrido en pausa: si no le piden nada, sigue
 
-// En el celular el parlante y el micrófono están pegados: Eva se oiría a sí misma. Ahí se turnan:
-// mientras Eva habla el micrófono se apaga, y se vuelve a prender cuando termina.
+// En el celular el parlante y el micrófono están pegados: Eva se oye a sí misma. Ahí, mientras habla,
+// solo la frenan palabras cortas como «pará», «Eva» o «basta» (que no esté diciendo ella); lo demás se ignora.
 const HALF_DUPLEX =
   typeof window !== "undefined" &&
   (/Android|iPhone|iPad|iPod|Mobile/i.test(window.navigator?.userAgent || "") ||
@@ -151,6 +152,27 @@ function subscribeVisibility(callback) {
 }
 const getVisible = () => document.visibilityState !== "hidden";
 
+// Pantallas chicas (celular): la charla muestra solo lo último
+const COMPACT_QUERY = "(max-width: 40rem), (max-height: 30rem)";
+function subscribeCompact(callback) {
+  const query = window.matchMedia(COMPACT_QUERY);
+  query.addEventListener("change", callback);
+  return () => query.removeEventListener("change", callback);
+}
+const getCompact = () => window.matchMedia(COMPACT_QUERY).matches;
+
+// Lo último de la charla: tu último pedido y lo que te contestó Eva.
+// Mientras hablás, solo lo último de Eva; mientras recorre, solo lo que está diciendo.
+function lastTurn(list, { draft, caption }) {
+  if (caption) return [];
+  const last = list[list.length - 1];
+  if (!last) return list;
+  if (last.from === "user") return draft ? [] : [last];
+  if (draft) return [last];
+  const before = list[list.length - 2];
+  return before?.from === "user" ? [before, last] : [last];
+}
+
 const clampScale = (v) => Math.min(SCALE_MAX, Math.max(SCALE_MIN, v));
 
 // ¿Con esto ya se puede hacer algo, o conviene esperar a que termine la frase?
@@ -177,6 +199,7 @@ function Assistant() {
   const [usedVoice, setUsedVoice] = useState(false);
   const systemReduced = useSyncExternalStore(subscribeMotion, getMotion, () => false);
   const visible = useSyncExternalStore(subscribeVisibility, getVisible, () => true);
+  const compact = useSyncExternalStore(subscribeCompact, getCompact, () => false);
   const wakeEnabled = useWakeEnabled();
   const reduced = systemReduced || settings.pause;
 
@@ -823,55 +846,72 @@ function Assistant() {
   // de la persona, Eva se calla, junta la frase completa y recién ahí hace el pedido.
 
   function onHeard(raw, isFinal, heardAt, key) {
-    if (HALF_DUPLEX && !hold.current) {
-      const { talking, quietAt } = speechState();
-      if (talking || heardAt - quietAt < MOBILE_ECHO_IGNORE) return;
-    }
     const t = normalize(raw);
     const words = t ? t.split(" ") : [];
+    const { talking, quietAt } = speechState();
+    const since = heardAt - quietAt;
+    // En el celular el micrófono oye fuerte a Eva: mientras habla (y un ratito después) solo la frenan
+    // palabras como «Eva», «pará» o «basta», y solo si no las está diciendo ella. Así no se escucha a sí misma.
+    const barge = HALF_DUPLEX && !hold.current && (talking || since < MOBILE_ECHO_IGNORE);
     let seg = segs.current.get(key);
     if (!seg) {
-      seg = { checked: 0, from: -1, used: 0, count: 0 };
+      // late: empezó apenas Eva se calló (puede ser la persona contestando rápido o lo último de su voz)
+      seg = { checked: 0, from: -1, used: 0, count: 0, echo: barge, late: barge && !talking, attention: false };
       segs.current.set(key, seg);
       if (segs.current.size > 60) segs.current.delete(segs.current.keys().next().value);
     }
+    // Pasado ese ratito, la frase que empezó apenas se calló se revisa entera: si no es su voz, es un pedido
+    if (seg.late && !barge && seg.from < 0) {
+      seg.late = false;
+      seg.checked = 0;
+    }
     // Palabras nuevas de esta frase: ¿la primera de la persona?
     if (seg.from < 0 && words.length > seg.checked) {
-      const { talking, quietAt } = speechState();
-      const since = heardAt - quietAt;
       let isUser = () => true;
-      if (talking || since < ECHO_TAIL) {
+      if (barge) {
+        isUser = bargeTest(normalize(spokenAround(heardAt, 4000, 1500)));
+      } else if (talking || since < ECHO_TAIL) {
         isUser = freshTest(normalize(spokenAround(heardAt)));
+      } else if (seg.echo && !hold.current) {
+        // La frase empezó con la voz de Eva (celular): lo que sigue cuenta si no se parece a lo que ella dijo
+        isUser = freshTest(normalize(spokenAround(quietAt, 6000, 0)));
       } else if (!hold.current && since < ECHO_GRACE) {
         const echo = lateEchoTest(normalize(spokenAround(quietAt, 1000, 0)));
         isUser = (w) => !echo(w);
       }
       for (let i = seg.checked; i < words.length; i++) {
-        // «Eva», «¿estás ahí?»: lo que queda de llamarla no es un pedido
-        if (isUser(words[i]) && !isCallWord(words[i])) {
+        // «Eva», «¿estás ahí?»: lo que queda de llamarla no es un pedido (salvo para frenarla en el celular)
+        if (isUser(words[i]) && (barge || !isCallWord(words[i]))) {
           seg.from = i;
+          seg.attention = barge;
           break;
         }
       }
       seg.checked = seg.from >= 0 ? seg.from : words.length;
     }
     seg.count = words.length;
-    const said = seg.from < 0 ? "" : withoutCall(words.slice(Math.max(seg.from, seg.used)).join(" "));
+    let said = "";
+    if (seg.from >= 0) {
+      const rest = words.slice(Math.max(seg.from, seg.used)).join(" ");
+      // Para frenarla en el celular, «Eva» cuenta: se saca al final, junto con lo último de su voz
+      said = seg.attention ? rest : withoutCall(rest);
+    }
 
     let h = hold.current;
     if (!h) {
       if (!said) return;
       h = beginHold(heardAt);
+      h.barge = seg.attention;
     }
     if (said || h.parts.has(key)) h.parts.set(key, said);
     if (isFinal) h.finals.add(key);
     else h.finals.delete(key);
 
-    const text = [...h.parts.values()].filter(Boolean).join(" ");
-    setDraft(clearText(text));
+    const text = holdText(h);
+    setDraft(text);
     window.clearTimeout(h.quiet);
     const closed = [...h.parts.keys()].every((k) => h.finals.has(k));
-    if (closed && text && isActionable(clearText(text))) {
+    if (closed && text && isActionable(text)) {
       finishHold();
       return;
     }
@@ -929,10 +969,30 @@ function Assistant() {
   }
 
   // Terminó de hablar: hace el pedido
+  // Celular: después de frenarla, el micrófono todavía escribe un instante lo último que ella decía
+  // («basta desde cero» → «basta»)
+  function withoutTail(text) {
+    const echo = lateEchoTest(normalize(spokenAround(speechState().quietAt, 2000, 0)));
+    const words = text.split(" ");
+    let n = words.length;
+    while (n > 1 && echo(normalize(words[n - 1]))) n -= 1;
+    return words.slice(0, n).join(" ");
+  }
+
+  // Lo que dijo la persona hasta ahora, sin lo que se coló de la voz de Eva
+  function holdText(h) {
+    let text = [...h.parts.values()].filter(Boolean).join(" ").trim();
+    if (h.barge && text) {
+      text = withoutTail(text);
+      text = withoutCall(text) || text; // «Eva, llevame al equipo» → «llevame al equipo»; «Eva» sola queda
+    }
+    return clearText(text);
+  }
+
   function finishHold() {
     const h = hold.current;
     if (!h) return;
-    const text = clearText([...h.parts.values()].filter(Boolean).join(" ").trim());
+    const text = holdText(h);
     dropHold();
     if (looksLikeEcho(text)) {
       if (readQueue.current.paused) resumeReading(0);
@@ -1235,10 +1295,9 @@ function Assistant() {
   // "wake": solo la frase para llamarla (con «Eva por voz» prendido en el header).
   let micMode = null;
   if (canListen && visible) {
-    if (micOn && (open || reading)) {
-      // En el celular: mientras Eva habla el micrófono descansa (se prende en las pausas)
-      micMode = HALF_DUPLEX && speaking ? null : "talk";
-    } else if (wakeEnabled && !(HALF_DUPLEX && speaking)) micMode = "wake";
+    // En el celular sigue escuchando mientras Eva habla, pero ahí solo le hacen caso «pará», «Eva», «basta»…
+    if (micOn && (open || reading)) micMode = "talk";
+    else if (wakeEnabled && !(HALF_DUPLEX && speaking)) micMode = "wake";
   }
 
   const onWake = useEffectEvent(() => summon());
@@ -1378,6 +1437,11 @@ function Assistant() {
   else if (reading === "page") status = "Leyendo la página…";
   else if (reading) status = "Esperando tu pedido…";
   else if (speaking) status = "Hablando…";
+  // En el celular, mientras habla, cómo frenarla
+  if (HALF_DUPLEX && micLive && speaking && !hearing && !thinking) status = "Decí «pará» para frenarme";
+
+  // En el celular no entra toda la charla: solo lo último (lo que dijiste y lo que te contestó)
+  const shown = compact ? lastTurn(messages, { draft, caption }) : messages;
 
   const showChips =
     view === "chat" && !reading && settings.mode && (settings.mode === "botones" || messages.length <= 2);
@@ -1445,7 +1509,7 @@ function Assistant() {
           ) : (
             <div className="eva-thread" ref={logRef}>
               <div className="eva-messages" role="log" aria-live="polite" aria-label="Charla con Eva">
-                {messages.map((m) => (
+                {shown.map((m) => (
                   <p key={m.id} className={`eva-bubble from-${m.from}`}>
                     <span className="eva-sr">{m.from === "user" ? "Vos: " : "Eva: "}</span>
                     {m.text}

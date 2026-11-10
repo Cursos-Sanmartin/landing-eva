@@ -335,6 +335,25 @@ export function freshTest(evaText) {
   return freshWords([evaText]);
 }
 
+// En el celular el micrófono oye fuerte a Eva por el parlante, y Chrome escribe cualquier cosa.
+// Mientras habla, solo la frenan estas palabras, y solo si no se parecen a nada de lo que viene diciendo.
+const BARGE_WORDS = new Set(
+  ("eva basta para pare frena frene stop espera esperame pera momento callate silencio alto detente " +
+    "detenete aguarda che siguiente anterior").split(" "),
+);
+export function bargeTest(evaText) {
+  const heard = evaText.split(" ").filter(Boolean);
+  const known = new Set(heard);
+  const sounds = [...new Set(heard.map(sound))];
+  return (w) => {
+    if (!BARGE_WORDS.has(w) || known.has(w)) return false;
+    const s = sound(w);
+    return !sounds.some(
+      (k) => k === s || (s.length >= 4 && k.length >= 3 && (near(s, k, 1) || k.startsWith(s.slice(0, 3)))),
+    );
+  };
+}
+
 // Apenas se calla: sus últimas palabras todavía pueden llegar (Chrome tarda en escribirlas)
 export function lateEchoTest(evaText) {
   const tail = [...new Set(evaText.split(" ").filter(Boolean).map(sound))];

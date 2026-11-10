@@ -11,6 +11,11 @@ export const canListen = Boolean(Recognition);
 
 const now = () => (typeof performance !== "undefined" ? performance.now() : Date.now());
 
+// Chrome en Android manda cada pedacito de la frase («hola», «hola eva») como si fuera una frase nueva y
+// terminada. Ahí, lo que todavía está entendiendo llega con confianza 0: así lo reconocemos.
+const ANDROID = typeof navigator !== "undefined" && /Android/i.test(navigator.userAgent || "");
+const plain = (t) => String(t || "").trim().toLowerCase();
+
 let voices = [];
 function loadVoices() {
   try {
@@ -322,6 +327,10 @@ export function listenForWakeWord({ match, onWake, onReady, onFatal, maxIdle = 0
     rec.interimResults = true;
     rec.maxAlternatives = 1;
     heard = false;
+    // Cada frase tiene su clave. En Android, los pedacitos de una misma frase llegan en lugares
+    // distintos de la lista: los juntamos en la misma clave para que sea un solo pedido (y un solo globito)
+    const keys = new Map();
+    let cur = null; // la última frase: { key, text, final, at }
     rec.onstart = () => {
       startedAt = now();
       if (!announced) {
@@ -333,7 +342,20 @@ export function listenForWakeWord({ match, onWake, onReady, onFatal, maxIdle = 0
       retries = 0;
       heard = true;
       for (let i = e.resultIndex; i < e.results.length; i++) {
-        if (match(e.results[i][0].transcript, e.results[i].isFinal, e.timeStamp, `${mySession}:${i}`)) {
+        const result = e.results[i];
+        const text = result[0].transcript;
+        const isFinal = result.isFinal && !(ANDROID && !(result[0].confidence > 0));
+        let key = keys.get(i);
+        if (!key) {
+          // Android: sigue la frase anterior si todavía no había terminado, o si es la misma repetida
+          // (a veces la manda dos veces). En la compu cada lugar de la lista es su propia parte de la frase.
+          const same =
+            ANDROID && cur && e.timeStamp - cur.at < 1500 && (!cur.final || plain(text) === plain(cur.text));
+          key = same ? cur.key : `${mySession}:${i}`;
+          keys.set(i, key);
+        }
+        cur = { key, text, final: isFinal, at: e.timeStamp };
+        if (match(text, isFinal, e.timeStamp, key)) {
           stopped = true;
           try {
             rec.abort();
