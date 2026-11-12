@@ -57,23 +57,31 @@ Recibís lo que una persona le dijo a Eva por voz o por escrito. Puede venir mal
 cortadas) o con pedazos de lo que decía Eva mezclados. Decidí qué acción quiere y respondé solo con el JSON pedido.
 
 Acciones:
-- open: abrir un trabajo. Siempre que puedas, project = el nombre EXACTO de la lista de trabajos (aunque lo diga
-  incompleto, mal pronunciado o mal transcripto, elegí el que corresponde). Si dice «este», «ese» o «el que estás
-  contando», es el trabajo que Eva está contando ahora o el último que abrió. Si dice una posición, index (1 = el primero
-  de la página, -1 = el último). Si no queda claro cuál, answer preguntando cuál quiere.
-- tour: recorrer la página contando los proyectos. theme = el slug si nombra una temática.
+- open: abrir y mostrar UN trabajo de cualquier parte del sitio (Eva cambia de página sola). Siempre que puedas,
+  project = el nombre EXACTO de la lista de todos los trabajos (aunque lo diga incompleto, mal pronunciado o mal
+  transcripto, elegí el que corresponde). Si dice «este», «ese» o «el que estás contando», es el trabajo que Eva está
+  contando ahora o el último que abrió. Si dice una posición, index (1 = el primero de la página, -1 = el último).
+  Si pide «un trabajo», «alguno», «uno de…» o «uno sobre…» (de una temática, de un tema, de un tipo: video, página web,
+  documento), elegí vos el que mejor coincida mirando de qué se trata cada uno, y abrilo. Si no queda claro cuál, answer
+  preguntando cuál quiere.
+  reply: cómo lo presenta Eva al abrirlo, en una o dos oraciones: nombre, escuela y de qué se trata, solo con los datos
+  de la lista; si eligió entre varios por un tema, decí por qué es ese. Terminá ofreciendo ver otro.
+- tour: recorrer contando TODOS los proyectos de una página o temática, uno por uno. theme = el slug si nombra una
+  temática. Usalo solo si pide que le cuenten, recorran o naveguen todos los proyectos; si pide uno, es open.
 - program: contar de qué se trata el programa EVA (sus 6 unidades). Usalo cuando pida que le cuenten o le expliquen el
   programa, EVA, «el proyecto» (sin nombrar un trabajo) o de qué se trata todo esto.
 - section_tour: ir a una sección del inicio y contarla mostrándola. section = equipo, tematicas o programa.
   Usalo cuando pida que le cuenten, le muestren o le expliquen el equipo o las temáticas.
-- go_theme: ir a una temática. theme = el slug.
-- go_section: ir a una sección del inicio. section = programa, tematicas, equipo o inicio.
+- go_theme: ir a una temática. theme = el slug. reply: qué hay ahí (cuántos proyectos y dos o tres nombres) y ofrecé
+  mostrar alguno o contarlos. Si además pidió un trabajo sobre algo que en esa temática no hay, decilo en reply y ofrecé
+  otros parecidos de ahí.
+- go_section: ir a una sección del inicio. section = programa, tematicas, equipo o inicio. reply: opcional, corto.
 - next / prev: el siguiente / el anterior (en un recorrido o en un trabajo abierto).
 - resume: que siga con lo que estaba haciendo.
 - stop: que pare o se calle.
 - close_work: cerrar el trabajo o la página abierta.
 - new_tab: abrir en otra pestaña la página web que está mostrando.
-- read: leer la página en voz alta.
+- read: leer la página en voz alta. Si pide ir a otro lado y leer ahí, theme (temática) o section: Eva va y lee.
 - bigger / smaller: agrandar / achicar el texto.
 - contrast, font (letra más legible), links (resaltar enlaces), animations: value true = activar, false = desactivar,
   null = cambiar al otro estado.
@@ -97,6 +105,10 @@ a algo anterior: «sí», «dale», «ok», «ese», «el que me dijiste», «no
 dice que algo no pasó («no lo abriste»), hacelo. Si rechaza, answer amable ofreciendo otra cosa.
 Si pide que elijas o recomiendes un trabajo, podés abrirlo directamente (open) en vez de preguntar.
 
+Guía por todo el sitio: tenés la lista de TODOS los trabajos de todas las temáticas, no solo los de la página actual.
+Pedidos de varias cosas («andá a inteligencia artificial y mostrame uno de salud»): elegí la acción del final (lo que
+quiere ver o hacer, no solo ir); open, read y tour ya llevan a la página que corresponde.
+
 Usá solo trabajos y temáticas de las listas. Si dudás entre dos acciones, elegí answer y preguntá qué quiso decir.`;
 
 function describe(context = {}) {
@@ -104,10 +116,8 @@ function describe(context = {}) {
   if (context.page) lines.push(`Página actual: ${context.page}.`);
   if (context.site) lines.push(`Lo que dice el sitio:\n${context.site}`);
   if (context.projectsHere?.length) {
-    const here = context.projectsHere.map((p) =>
-      typeof p === "string" ? p : [p.name, p.students, p.school, p.about].filter(Boolean).join(" — "),
-    );
-    lines.push(`Trabajos en esta página, en orden (nombre — estudiantes — escuela — de qué se trata):\n${here.join("\n")}`);
+    const here = context.projectsHere.map((p) => (typeof p === "string" ? p : p.name));
+    lines.push(`Trabajos en esta página, en orden (sus datos están en la lista de todo el sitio): ${here.join("; ")}.`);
   }
   if (context.openWork) lines.push("Hay un trabajo o una página web abierta.");
   if (context.paused) lines.push("Eva estaba recorriendo o leyendo la página y frenó para escuchar.");
@@ -119,7 +129,10 @@ function describe(context = {}) {
     );
   }
   if (context.projects?.length) {
-    lines.push("Todos los trabajos (nombre — temática): " + context.projects.map((p) => `${p.name} — ${p.theme}`).join("; ") + ".");
+    const all = context.projects.map((p) =>
+      [p.name, p.theme, p.students, p.school, p.kind, p.about].filter(Boolean).join(" — "),
+    );
+    lines.push(`Todos los trabajos del sitio (nombre — temática — estudiantes — escuela — tipo — de qué se trata):\n${all.join("\n")}`);
   }
   if (context.about) lines.push(`Sobre EVA: ${context.about}`);
   if (context.current) lines.push(`Trabajo que Eva está contando ahora en el recorrido («este»): ${context.current}.`);

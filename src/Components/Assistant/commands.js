@@ -505,10 +505,17 @@ const BASIC = new Set(["open", "closeWork", "page", "tour", "read", "size", "tog
 const NAV_VERBS = /(^| )(llevame|lleva|lleve|llevanos|anda|andate|ir|vamos|volve|volver|entra|entrar|subi|baja|mostrame la seccion)( |$)/;
 const ASKS = /(^| )(contame|conta|contas|contanos|contar|explica|explicame|explicanos|explicas|hablame|decime|deci|que es|que son|como|cuanto|cuantos|cuantas|quien|quienes|por que|para que|de que|donde|cuando|cual|cuales|sabes)( |$)/;
 
+// Pedidos de más de una cosa («andá a IA y mostrame uno de salud») o de UN trabajo en particular
+// («mostrame un proyecto de…», «alguno sobre…»): Eva sola agarraría solo una parte
+const MORE = /(^| )(y|despues|luego) (.* )?(mostra|abri|conta|lee|busca|elegi|recomenda|explica|deci|ensena|dame|lleva|anda)[a-z]*( |$)/;
+const ONE = /(^| )(un|una|algun|alguno|alguna|uno)( (proyecto|trabajo|producto|ejemplo|video|juego|pagina))?( |$)/;
+const TOPIC = /(^| )(sobre|acerca|trate|hable|relacionado|relacionada|relacionados)( |$)/;
+
 export function wantsAI(raw, intent) {
   const t = normalize(raw);
   if (intent.type === "stop") return false;
   if (ASKS.test(t)) return true;
+  if (MORE.test(t) || ONE.test(t) || TOPIC.test(t)) return true;
   // Abrir siempre lo resuelve la IA (entiende mejor cuál es, mirando la charla); si no responde, Eva lo intenta sola
   if (intent.type === "open") return true;
   if (intent.type === "go") return !NAV_VERBS.test(t);

@@ -24,19 +24,29 @@ export function siteFacts(about) {
       about: theme.description || "",
       count: PROJECTS.filter((p) => p.theme === slug).length,
     })),
-    projects: PROJECTS.map((p) => ({ name: p.name, theme: p.theme })),
+    // Todo el sitio, no solo la página actual: así puede guiar a cualquier trabajo
+    projects: PROJECTS.map((p) => ({
+      name: p.name,
+      theme: p.theme,
+      school: p.school || "",
+      students: p.students || "",
+      kind: kindOf(p),
+      about: (p.description || "").slice(0, 160),
+    })),
     about,
   };
 }
 
-// Los trabajos de la página que se está viendo, con sus datos (para contestar sobre ellos)
-export function projectDetails(names) {
-  return names.map((name) => {
-    const p = PROJECTS.find((item) => item.name === name);
-    if (!p) return { name };
-    return { name, students: p.students || "", school: p.school || "", about: (p.description || "").slice(0, 240) };
-  });
+// Qué tipo de trabajo es (para que la IA pueda elegir «un video», «una página web»…)
+function kindOf(p) {
+  if (p.video) return "video";
+  if (p.url) return "página web";
+  if (p.pages?.length > 1) return "documento";
+  return "imagen";
 }
+
+// Lo que Eva dice después de hacer algo que pidió la IA (si la IA lo armó)
+const replyOf = (a) => String(a.reply || "").trim().slice(0, 400) || null;
 
 const SECTION_IDS = ["programa", "tematicas", "equipo"];
 
@@ -72,7 +82,7 @@ function toIntent(a) {
   switch (a.action) {
     case "open": {
       const project = a.project && PROJECTS.find((p) => p.name.toLowerCase() === a.project.toLowerCase());
-      if (project) return { type: "open", project };
+      if (project) return { type: "open", project, reply: replyOf(a) };
       // Nombró un trabajo que no existe: mejor decirlo que abrir otro
       if (a.project) return { type: "answer", text: "No encontré un trabajo con ese nombre. ¿Me lo decís de otra forma?" };
       if (Number.isInteger(a.index) && a.index !== 0) return { type: "open", index: a.index };
@@ -87,10 +97,10 @@ function toIntent(a) {
       if (a.section === "tematicas") return { type: "tour", theme: null, home: true };
       return SECTION_IDS.includes(a.section) ? { type: "sectionTour", section: a.section } : null;
     case "go_theme":
-      return theme ? { type: "go", to: `/tematicas/${theme}`, label: `a ${THEMES[theme].name}` } : null;
+      return theme ? { type: "go", to: `/tematicas/${theme}`, label: `a ${THEMES[theme].name}`, reply: replyOf(a) } : null;
     case "go_section": {
       const section = SECTIONS[a.section];
-      return section ? { type: "go", to: section.to, label: section.label } : null;
+      return section ? { type: "go", to: section.to, label: section.label, reply: replyOf(a) } : null;
     }
     case "next":
       return { type: "page", dir: 1 };
@@ -104,8 +114,12 @@ function toIntent(a) {
       return { type: "closeWork", plain: false };
     case "new_tab":
       return { type: "newTab" };
-    case "read":
-      return { type: "read", selection: false };
+    case "read": {
+      // «Llevame a robótica y leémela»: primero va, después lee
+      const section = SECTIONS[a.section];
+      const to = theme ? `/tematicas/${theme}` : section ? section.to : null;
+      return { type: "read", selection: false, to };
+    }
     case "bigger":
       return { type: "size", dir: 1 };
     case "smaller":

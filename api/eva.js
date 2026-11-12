@@ -29,8 +29,8 @@ export default async function handler(req, res) {
       body = {};
     }
   }
-  // Un pedido normal pesa unos pocos KB: lo más grande se rechaza
-  if (JSON.stringify(body || {}).length > 40000) {
+  // Con todos los trabajos del sitio un pedido ronda los 26 000 caracteres: lo que pase de 60 000 se rechaza
+  if (JSON.stringify(body || {}).length > 60000) {
     res.status(413).json({ error: "Pedido demasiado grande" });
     return;
   }

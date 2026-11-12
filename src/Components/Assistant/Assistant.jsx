@@ -40,7 +40,7 @@ import {
   withoutEcho,
 } from "./commands";
 import { onOpenRequest, onWakeToggledByUser, setWakeEnabled, setWakeLive, useWakeEnabled } from "./assistantStore";
-import { askAI, projectDetails, siteFacts } from "./ai";
+import { askAI, siteFacts } from "./ai";
 import {
   cardName,
   closeOpenViewer,
@@ -61,7 +61,7 @@ import {
   turnViewerPage,
   waitFor,
 } from "./pageGuide";
-import { THEMES } from "../../data/projects";
+import { PROJECTS, THEMES } from "../../data/projects";
 import "./Assistant.css";
 
 // Asistente de accesibilidad de EVA (prueba).
@@ -185,6 +185,25 @@ function subscribeVisibility(callback) {
   return () => document.removeEventListener("visibilitychange", callback);
 }
 const getVisible = () => document.visibilityState !== "hidden";
+
+// Lo que Eva cuenta al mostrar un trabajo: qué es, de qué escuela y de qué se trata
+function presentProject(name) {
+  const p = PROJECTS.find((item) => item.name === name);
+  if (!p) return `Te muestro «${name}». ¿Querés ver otro?`;
+  const school = p.school ? `, de ${p.school}` : "";
+  const about = p.description ? ` ${p.description.trim().replace(/([^.!?])$/, "$1.")}` : "";
+  return `Te muestro «${p.name}»${school}.${about} ¿Querés ver otro?`;
+}
+
+// Al llegar a una temática: cuántos trabajos tiene y qué puede hacer ahí
+function placeSummary(to) {
+  const slug = to.match(/^\/tematicas\/([^/#?]+)/)?.[1];
+  const theme = slug && THEMES[slug];
+  if (!theme) return DONE;
+  const n = PROJECTS.filter((p) => p.theme === slug).length;
+  if (n === 1) return `Listo, estás en ${theme.name}: tiene un proyecto. ¿Querés que te lo muestre?`;
+  return `Listo, estás en ${theme.name}: tiene ${n} proyectos. ¿Querés que te los cuente o que te muestre alguno?`;
+}
 
 // Si hay un trabajo abierto en la ventana del sitio (los botones ofrecen «siguiente», «anterior», «cerrar»)
 function subscribeViewer(callback) {
@@ -569,7 +588,7 @@ function Assistant() {
     if (intent.type === "open" && intent.which === "this") {
       const card = queue.currentCard?.isConnected ? queue.currentCard : null;
       stopAll();
-      openWork(card ? { card } : intent);
+      openWork(card ? { card, quiet: true } : intent);
       return;
     }
     stopAll();
@@ -726,10 +745,12 @@ function Assistant() {
     card.scrollIntoView({ block: "center", behavior: reducedRef.current ? "auto" : "smooth" });
     const name = cardName(card);
     const opened = openCard(card);
+    // Lo presenta (o dice lo que armó la IA); si lo acaba de contar en el recorrido, solo «Listo»
+    const told = intent.quiet ? DONE : intent.reply || presentProject(name);
     if (opened.result === "frame") {
       showWeb({ name, url: opened.frame, href: opened.href });
-      say(DONE);
-    } else if (opened.result === "viewer" || opened.result === "web") say(DONE);
+      say(told);
+    } else if (opened.result === "viewer" || opened.result === "web") say(told);
     else if (opened.result === "blocked") say(BLOCKED);
     else say(`No pude abrir «${name}».`);
   }
@@ -1062,7 +1083,8 @@ function Assistant() {
       ...facts.current,
       units: Array.from(document.querySelectorAll("#programa .step h3"), (h) => h.textContent.trim()),
       page,
-      projectsHere: projectDetails(projectCards().map(cardName)),
+      // Los de esta página, en orden (los datos de cada uno ya van en la lista de todo el sitio)
+      projectsHere: projectCards().map(cardName),
       history: messagesRef.current.slice(-8).map((m) => ({ from: m.from, text: m.text })),
       lastOpened: lastCard.current?.isConnected ? cardName(lastCard.current) : null,
       current: readQueue.current.currentCard?.isConnected ? cardName(readQueue.current.currentCard) : null,
@@ -1110,6 +1132,13 @@ function Assistant() {
           say("Tu navegador no tiene voz para leer en voz alta.");
           break;
         }
+        // «Llevame a robótica y leémela»: primero va, y cuando la página está lista, lee
+        if (intent.to) {
+          navigate(intent.to);
+          addMessage("eva", "Te llevo y te leo la página. Tocá «Detener» cuando quieras.");
+          window.setTimeout(() => startReading(false), 700);
+          break;
+        }
         const what = intent.selection && selectedText() ? "lo que marcaste" : "la página";
         addMessage("eva", `Te leo ${what}. Tocá «Detener» cuando quieras.`);
         startReading(intent.selection);
@@ -1151,7 +1180,8 @@ function Assistant() {
         break;
       case "go":
         navigate(intent.to);
-        say(DONE);
+        // En una temática cuenta qué hay; si la IA armó la respuesta, dice esa
+        say(intent.reply || placeSummary(intent.to));
         break;
       case "about":
       case "program":
