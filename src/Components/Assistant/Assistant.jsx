@@ -1245,9 +1245,9 @@ function Assistant() {
   }
 
   function toggleMic(e) {
-    // Celular: si la tocás mientras habla o lee, se calla y te escucha (no apaga la escucha)
+    // Si la tocás mientras habla o lee, se calla y te escucha (no apaga la escucha)
     const queue = readQueue.current;
-    const interrupt = TAP_TO_TALK && (speaking || (queue.list.length > 0 && !queue.paused));
+    const interrupt = speaking || (queue.list.length > 0 && !queue.paused);
     if (micOn && !interrupt) {
       setMicOn(false);
       voiceSession.current = false;
@@ -1257,8 +1257,12 @@ function Assistant() {
     setUsedVoice(true);
     setMicOn(true);
     if (!readQueue.current.list.length) hush();
-    // Celular: para escucharte frena la lectura (si no decís nada, después sigue sola)
-    else if (TAP_TO_TALK) pauseAtCurrent(e?.timeStamp ?? Number.POSITIVE_INFINITY, true);
+    // Para escucharte frena la lectura (si no decís nada, después sigue sola)
+    else {
+      pauseAtCurrent(e?.timeStamp ?? Number.POSITIVE_INFINITY, true);
+      // En la compu la escucha no se corta sola: la espera arranca ya
+      if (!TAP_TO_TALK) waitInPause();
+    }
   }
 
   function chooseMode(mode) {
@@ -1349,11 +1353,15 @@ function Assistant() {
 
   // "talk": Eva está abierta (o leyendo) y la persona usa la voz: escucha todo, sin cortar.
   // "wake": solo la frase para llamarla (con «Eva por voz» prendido en el header).
-  // En el celular no hay escucha de fondo: solo la que se pide tocando, y nunca mientras Eva habla.
+  // Por turnos: nunca escucha mientras Eva habla (así no se escucha a sí misma); para frenarla, se la toca.
+  // En el celular no hay escucha de fondo: solo la que se pide tocando. En la compu vuelve a escuchar sola
+  // cuando Eva termina de hablar.
   let micMode = null;
   if (canListen && visible) {
-    if (micOn && (open || reading) && !(TAP_TO_TALK && speaking)) micMode = "talk";
-    else if (wakeEnabled && !TAP_TO_TALK) micMode = "wake";
+    const talking = micOn && (open || reading);
+    if (talking && !speaking) micMode = "talk";
+    // Mientras Eva habla en plena charla no se escucha nada (ni siquiera la frase para llamarla)
+    else if (wakeEnabled && !TAP_TO_TALK && !talking) micMode = "wake";
   }
 
   const onWake = useEffectEvent(() => summon());
@@ -1510,10 +1518,10 @@ function Assistant() {
   else if (reading === "page") status = "Leyendo la página…";
   else if (reading) status = "Esperando tu pedido…";
   else if (speaking) status = "Hablando…";
-  // En el celular, mientras habla, cómo frenarla
-  if (TAP_TO_TALK && canListen && speaking && !thinking) status = "Tocame para interrumpirme";
+  // Mientras habla, cómo frenarla
+  if (speaking && !thinking) status = "Tocame para interrumpirme";
 
-  const interrupts = TAP_TO_TALK && (speaking || (Boolean(reading) && reading !== "paused"));
+  const interrupts = speaking || (Boolean(reading) && reading !== "paused");
   const micLabel = interrupts ? "Interrumpir a Eva y hablarle" : micOn ? "Apagar el micrófono" : "Hablarle a Eva";
 
   // En el celular no entra toda la charla: solo lo último (lo que dijiste y lo que te contestó)
@@ -1660,9 +1668,14 @@ function Assistant() {
 
           <div className="eva-stage">
             <div className={`eva-pad${listeningNow ? " is-listening" : ""}`}>
-              {TAP_TO_TALK && canListen ? (
-                // Celular: tocar a Eva es como tocar el micrófono
+              {canListen ? (
+                // Tocar a Eva es como tocar el micrófono: si está hablando, se calla y te escucha
                 <button type="button" className="eva-pad-tap" onClick={toggleMic} aria-label={micLabel}>
+                  <EvaCharacter state={charState} talking={speaking} reduced={reduced} dots />
+                </button>
+              ) : interrupts ? (
+                // Sin dictado (Firefox): tocarla solo la hace callar
+                <button type="button" className="eva-pad-tap" onClick={stopAll} aria-label="Detener a Eva">
                   <EvaCharacter state={charState} talking={speaking} reduced={reduced} dots />
                 </button>
               ) : (
