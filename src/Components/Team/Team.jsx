@@ -7,8 +7,8 @@ const TEAM = [
   { name: "Fran", role: "Coordinador general", photo: "/equipo/fran.webp" },
   { name: "Marti", role: "Referente territorial", photo: "/equipo/marti.webp" },
   { name: "Abru", role: "Coordinadora pedagógica", photo: "/equipo/abru.webp" },
-  { name: "Feli", role: "Tutor", photo: "" },
-  { name: "Eri", role: "Tutora", photo: "" },
+  { name: "Feli", role: "Tutor", photo: "/equipo/feli.jpeg" },
+  { name: "Eri", role: "Tutora", photo: "/equipo/eri.jpeg" },
   { name: "Lean", role: "Tutor", photo: "/equipo/lean.webp" },
   { name: "Yaz", role: "Tutora", photo: "" },
 ];
