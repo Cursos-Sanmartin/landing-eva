@@ -213,7 +213,7 @@ export const PROJECTS = [
     name: "Yvy Ecología",
     students: "",
     school: "LA SALLE",
-    theme: "ia",
+    theme: "diseno-ux-ui",
     description: "Programa de reciclaje de San Martín: separás, llevás al punto verde y sumás puntos. Incluye un videojuego.",
     url: "https://yvy-ecologia.netlify.app",
     image: "/proyectos/21.jpg",
