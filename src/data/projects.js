@@ -3,6 +3,13 @@
 // Si queda vacío (""), la tile muestra el degradé con el ícono.
 // palette: los dos colores de punta a punta del banner (izquierda y derecha).
 export const THEMES = {
+  ia: {
+    name: "Inteligencia Artificial",
+    color: "#ff235f",
+    description: "Explorá cómo la IA puede potenciar tus ideas, proyectos y decisiones. Te invitamos a usarla de manera creativa, ética y personal.",
+    image: "/tematicas/ia.jpg",
+    palette: ["#ffac99", "#ff235f"],
+  },
   "metodologias-agiles": {
     name: "Metodologías Ágiles",
     color: "#ff43cb",
@@ -16,13 +23,6 @@ export const THEMES = {
     description: "Aprendé a usar los datos para comprender tu entorno, contar historias y tomar decisiones. Este módulo conecta análisis, creatividad y compromiso social.",
     image: "/tematicas/ciencia-de-datos.jpg",
     palette: ["#00f347", "#0073d1"],
-  },
-  ia: {
-    name: "Inteligencia Artificial",
-    color: "#ff235f",
-    description: "Explorá cómo la IA puede potenciar tus ideas, proyectos y decisiones. Te invitamos a usarla de manera creativa, ética y personal.",
-    image: "/tematicas/ia.jpg",
-    palette: ["#ffac99", "#ff235f"],
   },
   marketing: {
     name: "Marketing Digital",

@@ -1,0 +1,94 @@
+.runner-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: grid;
+  place-items: center;
+  padding: 1rem;
+  background: rgba(10, 46, 94, 0.55);
+  backdrop-filter: blur(4px);
+  animation: runner-fade 0.2s ease;
+}
+
+.runner-dialog {
+  width: min(100%, 56rem);
+  padding: 1rem 1.25rem 1.1rem;
+  border-radius: var(--radius, 1.375rem);
+  background: var(--bg-soft, #f2f8fc);
+  box-shadow: var(--shadow);
+  outline: none;
+  animation: runner-pop 0.25s ease;
+}
+
+.runner-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.5rem;
+  color: var(--navy, #0a2e5e);
+  font-size: 1.1rem;
+}
+
+.runner-close {
+  width: 2.25rem;
+  height: 2.25rem;
+  border: 0;
+  border-radius: 50%;
+  background: var(--navy, #0a2e5e);
+  color: #fff;
+  font-size: 1.4rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.runner-close:hover,
+.runner-close:focus-visible {
+  background: var(--cyan, #00a9e9);
+}
+
+.runner-canvas {
+  display: block;
+  width: 100%;
+  aspect-ratio: 800 / 240;
+  border-radius: 0.9rem;
+  background: linear-gradient(#e6f5fd, #ffffff 80%);
+  touch-action: none;
+  cursor: pointer;
+  user-select: none;
+}
+
+.runner-help {
+  margin: 0.6rem 0 0;
+  color: var(--muted, #4d6a8a);
+  font-size: 0.85rem;
+  text-align: center;
+}
+
+.runner-help kbd {
+  padding: 0.05rem 0.4rem;
+  border: 1px solid var(--line, #dbe8f2);
+  border-radius: 0.35rem;
+  background: #fff;
+  font-family: inherit;
+  font-size: 0.8rem;
+}
+
+@keyframes runner-fade {
+  from {
+    opacity: 0;
+  }
+}
+
+@keyframes runner-pop {
+  from {
+    opacity: 0;
+    transform: translateY(12px) scale(0.97);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .runner-backdrop,
+  .runner-dialog {
+    animation: none;
+  }
+}

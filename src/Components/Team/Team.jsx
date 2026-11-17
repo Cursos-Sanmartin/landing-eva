@@ -1,4 +1,8 @@
+import { lazy, Suspense, useCallback, useState } from "react";
 import "./Team.css";
+
+// El juego se carga solo cuando alguien clickea la carta de Lean
+const EvaRunner = lazy(() => import("../EvaRunner/EvaRunner"));
 
 // Las 7 personas del equipo: nombre, cargo y foto.
 // photo: ruta de la foto dentro de public (ej. "/equipo/ana.webp").
@@ -9,13 +13,16 @@ const TEAM = [
   { name: "Abru", role: "Coordinadora pedagógica", photo: "/equipo/abru.webp" },
   { name: "Feli", role: "Tutor", photo: "/equipo/feli.jpeg" },
   { name: "Eri", role: "Tutora", photo: "/equipo/eri.jpeg" },
-  { name: "Lean", role: "Tutor", photo: "/equipo/lean.webp" },
-  { name: "Yaz", role: "Tutora", photo: "" },
+  { name: "Lean", role: "Tutor", photo: "/equipo/lean.webp", game: true },
+  { name: "Yaz", role: "Tutora", photo: "/equipo/yaz.jpeg" },
 ];
 
 const MIDDLE = (TEAM.length - 1) / 2;
 
 function Team() {
+  const [playing, setPlaying] = useState(false);
+  const closeGame = useCallback(() => setPlaying(false), []);
+
   return (
     <section id="equipo" className="team">
       <div className="wrap team-inner">
@@ -39,7 +46,14 @@ function Team() {
                   "--rot": `${offset * 7}deg`,
                   "--drop": `${Math.abs(offset) ** 1.6 * 0.6}rem`,
                   "--z": 10 - Math.abs(offset),
+                  ...(person.game && { cursor: "pointer" }),
                 }}
+                {...(person.game && {
+                  onClick: () => setPlaying(true),
+                  onKeyDown: (e) => {
+                    if (e.key === "Enter") setPlaying(true);
+                  },
+                })}
               >
                 <div className="fan-photo">
                   {person.photo ? (
@@ -69,6 +83,12 @@ function Team() {
           })}
         </ul>
       </div>
+
+      {playing && (
+        <Suspense fallback={null}>
+          <EvaRunner onClose={closeGame} />
+        </Suspense>
+      )}
     </section>
   );
 }
